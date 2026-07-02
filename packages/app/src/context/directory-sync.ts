@@ -324,6 +324,7 @@ export const createDirSyncContext = (
     limit: number
     before?: string
     mode?: "replace" | "prepend"
+    force?: boolean
   }) => {
     const key = keyFor(input.directory, input.sessionID)
     if (meta.loading[key]) return
@@ -331,7 +332,10 @@ export const createDirSyncContext = (
     setMeta("loading", key, true)
     await fetchMessages(input)
       .then((page) => {
-        if (!tracked(input.directory, input.sessionID)) return
+        // A forced load is the page explicitly (re)syncing the session it is
+        // showing; never drop that fetched page even if the session aged out of
+        // the LRU `seen` set while the request was in flight.
+        if (!input.force && !tracked(input.directory, input.sessionID)) return
         const next = mergeOptimisticPage(page, getOptimistic(input.directory, input.sessionID))
         for (const messageID of next.confirmed) {
           clearOptimistic(input.directory, input.sessionID, messageID)
@@ -365,7 +369,7 @@ export const createDirSyncContext = (
       .finally(() => {
         setMeta(
           produce((draft) => {
-            if (!tracked(input.directory, input.sessionID)) {
+            if (!input.force && !tracked(input.directory, input.sessionID)) {
               delete draft.loading[key]
               return
             }
@@ -504,6 +508,7 @@ export const createDirSyncContext = (
                   setStore,
                   sessionID,
                   limit,
+                  force: opts?.force,
                 })
 
           await Promise.all([sessionReq, messagesReq])
