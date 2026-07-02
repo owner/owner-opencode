@@ -661,7 +661,7 @@ export default function Page() {
         }, 0)
       })
 
-      return sync().session.sync(id)
+      return sync().session.sync(id, { force: true })
     },
   )
 
