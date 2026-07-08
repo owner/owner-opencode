@@ -18,7 +18,7 @@ export function createTimelineModel(input: {
 
   const [resource] = createResource(
     () => input.sessionID(),
-    async (id) => {
+    (id) => {
       clearRefresh()
       if (!id) return
 
@@ -36,18 +36,7 @@ export function createTimelineModel(input: {
         }, 0)
       })
 
-      if (cached) return sync().session.sync(id)
-
-      // Cold load for the session being viewed. A concurrent background load can
-      // be deduped by the shared in-flight map or dropped on a generation change,
-      // which leaves the transcript permanently blank with no retry. Force a load
-      // and re-drive it until the session's messages are in the store (or the view
-      // moves on).
-      for (let attempt = 0; attempt < 5; attempt++) {
-        await sync().session.sync(id, { force: true })
-        if (input.sessionID() !== id) return
-        if (untrack(() => sync().data.message[id] !== undefined)) return
-      }
+      return sync().session.sync(id)
     },
   )
   const messages = createMemo(() => {
@@ -56,7 +45,7 @@ export function createTimelineModel(input: {
   })
   const ready = createMemo(() => {
     const id = input.sessionID()
-    return !id || sync().data.message[id] !== undefined
+    return !id || isTimelineReady(sync().data.message[id], serverSync().session.history.loading(id))
   })
   const userMessages = createMemo(() => selectUserMessages(messages()), emptyUserMessages, { equals: same })
   const visibleUserMessages = createMemo(
@@ -107,6 +96,10 @@ export function createTimelineModel(input: {
 
 export function selectUserMessages(messages: Message[]) {
   return messages.filter((message): message is UserMessage => message.role === "user")
+}
+
+export function isTimelineReady(messages: Message[] | undefined, loading: boolean) {
+  return messages !== undefined && (messages.some((message) => message.role === "user") || !loading)
 }
 
 export function selectVisibleUserMessages(messages: UserMessage[], revertMessageID?: string) {
