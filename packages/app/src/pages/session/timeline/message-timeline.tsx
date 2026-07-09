@@ -16,6 +16,7 @@ import { Dynamic } from "solid-js/web"
 import { useNavigate } from "@solidjs/router"
 import { useMutation } from "@tanstack/solid-query"
 import { createVirtualizer, defaultRangeExtractor, elementScroll, type VirtualItem } from "@tanstack/solid-virtual"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Accordion } from "@opencode-ai/ui/accordion"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
@@ -520,6 +521,41 @@ export function MessageTimeline(props: {
       virtualizer.measure()
     }
     maybeAnchorBottom()
+  })
+
+  // Recover from an empty virtual window. When the scroll element is first bound
+  // it can measure 0px (parent flex layout not yet resolved), so the virtualizer
+  // caches a 0px viewport rect and seeds its scroll offset from `initialOffset`
+  // (Number.MAX_SAFE_INTEGER when anchoring bottom). Neither self-heals: the
+  // cached rect only updates via the ResizeObserver rect callback, and the offset
+  // only updates on a real scroll event. For a session whose content fits the
+  // viewport the element never scrolls, so the range extractor keeps seeing a 0px
+  // viewport at a bogus offset and renders no rows — a blank transcript that only
+  // "fixes" once the user scrolls. `scrollToEnd`/`scrollToOffset` can't correct it
+  // because they write `element.scrollTop`, which clamps to 0 on unscrollable
+  // content and emits no scroll event. Refresh the cached rect from the live
+  // element and reset the offset directly, then remeasure.
+  const recoverEmptyWindow = () => {
+    const root = listRoot()
+    if (!root || root.clientHeight === 0) return
+    if (timelineRows().length === 0 || virtualizer.getVirtualItems().length > 0) return
+    const rect = root.getBoundingClientRect()
+    const height = Math.round(rect.height)
+    virtualizer.scrollRect = { width: Math.round(rect.width), height }
+    virtualizer.scrollOffset = props.shouldAnchorBottom()
+      ? Math.max(virtualizer.getTotalSize() - height, 0)
+      : 0
+    virtualizer.measure()
+  }
+  // The virtualizer's own ResizeObserver rect callback fires before rows exist and
+  // does not re-run once the transcript is populated, so watch the element size
+  // ourselves and recover whenever it has a height but nothing is virtualized.
+  createResizeObserver(listRoot, recoverEmptyWindow)
+  createEffect(() => {
+    // Re-run when rows land after the element already had a height.
+    timelineRows().length
+    virtualizer.getVirtualItems().length
+    recoverEmptyWindow()
   })
 
   onCleanup(() => {
