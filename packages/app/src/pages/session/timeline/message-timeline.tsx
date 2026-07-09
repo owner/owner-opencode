@@ -16,6 +16,7 @@ import { Dynamic } from "solid-js/web"
 import { useNavigate } from "@solidjs/router"
 import { useMutation } from "@tanstack/solid-query"
 import { createVirtualizer, defaultRangeExtractor, elementScroll, type VirtualItem } from "@tanstack/solid-virtual"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Accordion } from "@opencode-ai/ui/accordion"
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
@@ -405,7 +406,13 @@ export function MessageTimeline(props: {
       return timelineRows().length
     },
     getScrollElement: () => listRoot() ?? null,
-    initialOffset: () => (props.shouldAnchorBottom() ? Number.MAX_SAFE_INTEGER : 0),
+    // Do not seed with Number.MAX_SAFE_INTEGER. TanStack Virtual only syncs
+    // scrollOffset from DOM on scroll events; a sentinel that never lands in
+    // the DOM leaves getVirtualItems() empty while getTotalSize() is non-zero
+    // (blank transcript on cold direct navigation when messages arrive before
+    // the ScrollView viewport is measurable). Anchor via scrollToEnd() once
+    // the scroll element has a real height instead.
+    initialOffset: 0,
     initialMeasurementsCache: initialMeasurements,
     estimateSize: () => timelineFallbackItemSize,
     scrollToFn: (offset, options, instance) => {
@@ -494,12 +501,18 @@ export function MessageTimeline(props: {
   let bottomAnchorSessionKey = ""
   let bottomAnchorFrame: number | undefined
 
-  const maybeAnchorBottom = () => {
+  const syncBottomAnchor = () => {
     const key = sessionKey()
-    if (bottomAnchorSessionKey === key) return
     if (timelineRows().length === 0) return
-    bottomAnchorSessionKey = key
-    if (!props.shouldAnchorBottom()) return
+    if (!props.shouldAnchorBottom()) {
+      bottomAnchorSessionKey = key
+      return
+    }
+    const root = listRoot()
+    // Wait until the ScrollView viewport is bound and measurable. Anchoring
+    // before that left cold deep-links permanently blank: scrollToEnd() no-ops
+    // with outerSize 0, and a one-shot key blocked retries.
+    if (!root || root.clientHeight <= 0) return
     if (bottomAnchorFrame !== undefined) cancelAnimationFrame(bottomAnchorFrame)
     if (resizePinFrame !== undefined) cancelAnimationFrame(resizePinFrame)
     clearPrependAnchor()
@@ -507,7 +520,29 @@ export function MessageTimeline(props: {
     bottomAnchorFrame = requestAnimationFrame(() => {
       bottomAnchorFrame = undefined
       if (sessionKey() !== key) return
+      const el = listRoot()
+      if (!el || el.clientHeight <= 0) return
+      // Re-attach TanStack's scroll element observers if listRoot bound after the
+      // virtualizer's first _willUpdate (common on cold direct nav). Without this,
+      // outerSize stays 0 forever and getVirtualItems() stays empty while
+      // getTotalSize() is non-zero.
+      virtualizer._willUpdate()
+      // If observers first attached while the flex pane still had height 0, the
+      // ResizeObserver may never re-fire once layout settles. Force the measured
+      // rect from the live DOM so calculateRange can produce indexes.
+      if (virtualizer.getSize() === 0 && el.clientHeight > 0) {
+        virtualizer.scrollElement = null
+        virtualizer._willUpdate()
+        if (virtualizer.getSize() === 0) {
+          virtualizer.scrollRect = {
+            width: el.clientWidth,
+            height: el.clientHeight,
+          }
+        }
+      }
+      virtualizer.measure()
       virtualizer.scrollToEnd()
+      bottomAnchorSessionKey = key
     })
   }
 
@@ -515,12 +550,25 @@ export function MessageTimeline(props: {
   createEffect(() => {
     const key = sessionKey()
     timelineRows().length
+    listRoot()
     if (measuredSessionKey !== key) {
       measuredSessionKey = key
+      bottomAnchorSessionKey = ""
       virtualizer.measure()
     }
-    maybeAnchorBottom()
+    syncBottomAnchor()
   })
+
+  // clientHeight is not a Solid signal — without this, a viewport that binds at
+  // height 0 (common on cold direct nav) never re-triggers bottom anchoring.
+  createResizeObserver(
+    () => listRoot(),
+    () => {
+      if (bottomAnchorSessionKey === sessionKey() && virtualizer.getVirtualItems().length > 0) return
+      bottomAnchorSessionKey = ""
+      syncBottomAnchor()
+    },
+  )
 
   onCleanup(() => {
     clearPrependAnchor()
@@ -552,8 +600,10 @@ export function MessageTimeline(props: {
 
   const bindListRoot = (root: HTMLDivElement) => {
     if (root === listRoot()) return
+    bottomAnchorSessionKey = ""
     setListRoot(root)
     props.setScrollRef(root)
+    syncBottomAnchor()
   }
 
   const handleListWheel = (event: WheelEvent & { currentTarget: HTMLDivElement }) => {
@@ -1423,7 +1473,7 @@ export function MessageTimeline(props: {
                           event.stopPropagation()
                           if (event.key === "Enter") {
                             event.preventDefault()
-                            void saveTitleEditor()
+                             saveTitleEditor()
                             return
                           }
                           if (event.key === "Escape") {

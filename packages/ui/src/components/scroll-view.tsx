@@ -108,11 +108,14 @@ export function ScrollView(props: ScrollViewProps) {
     setState("thumbTop", boundedTop)
   }
 
-  onMount(() => {
-    if (local.viewportRef) {
-      local.viewportRef(viewportRef)
-    }
+  const bindViewport = (el: HTMLDivElement) => {
+    viewportRef = el
+    // Bind synchronously so consumers (e.g. the session timeline virtualizer)
+    // see the scroll element during the same commit, not only after onMount.
+    local.viewportRef?.(el)
+  }
 
+  onMount(() => {
     createResizeObserver([viewportRef, viewportRef.firstElementChild], updateThumb)
 
     updateThumb()
@@ -206,7 +209,7 @@ export function ScrollView(props: ScrollViewProps) {
     >
       {/* Viewport */}
       <div
-        ref={viewportRef}
+        ref={bindViewport}
         class="scroll-view__viewport"
         onScroll={(e) => {
           updateThumb()
