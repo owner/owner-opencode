@@ -20,6 +20,40 @@ type TabsInput = {
 
 export const getSessionKey = (dir: string | undefined, id: string | undefined) => `${dir ?? ""}${id ? `/${id}` : ""}`
 
+export type ReviewChangeMode = "git" | "branch" | "turn"
+
+// Available review-tab change modes, in auto-default priority order. "branch"
+// (current branch vs default branch = the session's committed work) comes first
+// so a feature-branch session opens on the full task diff instead of
+// working-tree-only ("git") changes, which otherwise surface unrelated startup
+// drift (e.g. tooling that rewrites .opencode/package.json) as the "only" change.
+export function reviewChangeOptions(input: {
+  vcs?: string
+  branch?: string
+  defaultBranch?: string
+}): ReviewChangeMode[] {
+  const list: ReviewChangeMode[] = []
+  const isGit = input.vcs === "git"
+  if (isGit && input.branch && input.defaultBranch && input.branch !== input.defaultBranch) list.push("branch")
+  if (isGit) list.push("git")
+  list.push("turn")
+  return list
+}
+
+// Resolve the review mode to display. Until the user explicitly picks one
+// (`touched`), track the best default (options[0]); after that, keep their
+// choice and only fall back to the default when it is no longer available.
+export function resolveReviewChangeMode(input: {
+  options: ReviewChangeMode[]
+  current: ReviewChangeMode
+  touched: boolean
+}): ReviewChangeMode {
+  const next = input.options[0]
+  if (!next) return input.current
+  if (input.touched) return input.options.includes(input.current) ? input.current : next
+  return next
+}
+
 export function shouldShowFileTree(input: { visible: boolean; opened: boolean }) {
   return input.opened && input.visible
 }

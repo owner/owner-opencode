@@ -7,6 +7,8 @@ import {
   createSessionTabs,
   focusTerminalById,
   getTabReorderIndex,
+  resolveReviewChangeMode,
+  reviewChangeOptions,
   shouldFocusTerminalOnKeyDown,
   shouldShowFileTree,
 } from "./helpers"
@@ -122,6 +124,54 @@ describe("getTabReorderIndex", () => {
 
   test("returns undefined for unknown droppable id", () => {
     expect(getTabReorderIndex(["a", "b", "c"], "a", "missing")).toBeUndefined()
+  })
+})
+
+describe("reviewChangeOptions", () => {
+  test("prefers the branch diff on a feature-branch git session", () => {
+    expect(reviewChangeOptions({ vcs: "git", branch: "forge-task--abc", defaultBranch: "main" })).toEqual([
+      "branch",
+      "git",
+      "turn",
+    ])
+  })
+
+  test("omits branch when on the default branch", () => {
+    expect(reviewChangeOptions({ vcs: "git", branch: "main", defaultBranch: "main" })).toEqual(["git", "turn"])
+  })
+
+  test("omits branch when branch metadata is missing", () => {
+    expect(reviewChangeOptions({ vcs: "git" })).toEqual(["git", "turn"])
+  })
+
+  test("offers only turn diffs without git", () => {
+    expect(reviewChangeOptions({ vcs: "none" })).toEqual(["turn"])
+    expect(reviewChangeOptions({})).toEqual(["turn"])
+  })
+})
+
+describe("resolveReviewChangeMode", () => {
+  const options = reviewChangeOptions({ vcs: "git", branch: "forge-task--abc", defaultBranch: "main" })
+
+  test("auto-selects the branch diff when the user has not chosen a mode", () => {
+    expect(resolveReviewChangeMode({ options, current: "git", touched: false })).toBe("branch")
+  })
+
+  test("re-tracks the default even after an unrelated store default", () => {
+    expect(resolveReviewChangeMode({ options, current: "turn", touched: false })).toBe("branch")
+  })
+
+  test("keeps an explicit user choice", () => {
+    expect(resolveReviewChangeMode({ options, current: "git", touched: true })).toBe("git")
+    expect(resolveReviewChangeMode({ options, current: "turn", touched: true })).toBe("turn")
+  })
+
+  test("falls back to the default when the explicit choice is unavailable", () => {
+    expect(resolveReviewChangeMode({ options: ["git", "turn"], current: "branch", touched: true })).toBe("git")
+  })
+
+  test("returns the current mode when no options exist", () => {
+    expect(resolveReviewChangeMode({ options: [], current: "git", touched: false })).toBe("git")
   })
 })
 

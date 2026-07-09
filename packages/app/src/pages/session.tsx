@@ -56,6 +56,9 @@ import {
   createSessionTabs,
   createSizing,
   focusTerminalById,
+  resolveReviewChangeMode,
+  reviewChangeOptions,
+  type ReviewChangeMode,
   shouldFocusTerminalOnKeyDown,
   shouldShowFileTree,
 } from "@/pages/session/helpers"
@@ -82,13 +85,17 @@ type FollowupItem = FollowupDraft & { id: string }
 type FollowupEdit = Pick<FollowupItem, "id" | "prompt" | "context">
 const emptyFollowups: FollowupItem[] = []
 
-type ChangeMode = "git" | "branch" | "turn"
+type ChangeMode = ReviewChangeMode
 type VcsMode = "git" | "branch"
 
 const sessionViewState = () => ({
   messageId: undefined as string | undefined,
   mobileTab: "session" as "session" | "changes",
   changes: "git" as ChangeMode,
+  // Until the user explicitly picks a review mode, the default is auto-selected
+  // from changesOptions() so feature-branch sessions open on the full branch diff
+  // rather than working-tree-only ("git") changes.
+  changesTouched: false,
 })
 
 async function runPromptRollbackMutation<T, R>(input: {
@@ -358,17 +365,13 @@ export default function Page() {
     const project = sync().project
     return !!project && project.vcs !== "git"
   })
-  const changesOptions = createMemo<ChangeMode[]>(() => {
-    const list: ChangeMode[] = []
-    const project = sync().project
-    const vcs = sync().data.vcs
-    if (project?.vcs === "git") list.push("git")
-    if (project?.vcs === "git" && vcs?.branch && vcs?.default_branch && vcs.branch !== vcs.default_branch) {
-      list.push("branch")
-    }
-    list.push("turn")
-    return list
-  })
+  const changesOptions = createMemo<ChangeMode[]>(() =>
+    reviewChangeOptions({
+      vcs: sync().project?.vcs,
+      branch: sync().data.vcs?.branch,
+      defaultBranch: sync().data.vcs?.default_branch,
+    }),
+  )
   const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
   const wantsReview = createMemo(() =>
     isDesktop()
@@ -736,11 +739,12 @@ export default function Page() {
 
   createEffect(() => {
     if (!sync().project) return
-    const list = changesOptions()
-    if (list.includes(store.changes)) return
-    const next = list[0]
-    if (!next) return
-    setStore("changes", next)
+    const next = resolveReviewChangeMode({
+      options: changesOptions(),
+      current: store.changes,
+      touched: store.changesTouched,
+    })
+    if (store.changes !== next) setStore("changes", next)
   })
 
   createEffect(
@@ -820,7 +824,7 @@ export default function Page() {
         options={changesOptions()}
         current={store.changes}
         label={label}
-        onSelect={(option) => option && setStore("changes", option)}
+        onSelect={(option) => option && setStore({ changes: option, changesTouched: true })}
         variant="ghost"
         size="small"
         valueClass="text-14-medium"
