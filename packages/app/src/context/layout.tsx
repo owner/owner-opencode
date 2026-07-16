@@ -15,7 +15,7 @@ import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { createPathHelpers } from "./file/path"
 import type { ProjectAvatarVariant } from "@opencode-ai/ui/v2/project-avatar-v2"
 import { migrateLegacySessionStateKeys, ServerScope, SessionStateKey } from "@/utils/server-scope"
-import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys } from "./layout-helpers"
+import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys, resolveSessionWidth } from "./layout-helpers"
 import { requireServerKey } from "@/utils/session-route"
 import { type DraftTab, useTabs } from "./tabs"
 
@@ -28,6 +28,11 @@ const DEFAULT_SIDEBAR_WIDTH = 344
 const DEFAULT_FILE_TREE_WIDTH = 200
 const DEFAULT_SESSION_WIDTH = 600
 const DEFAULT_TERMINAL_HEIGHT = 280
+
+// Widest the chat panel is allowed to be (mirrors the `max` clamp on the resize handle),
+// which is the review pane's smallest state. `resolveSessionWidth` uses it as the first-open
+// default. SSR has no window, so fall back to the static default there.
+const maxSessionWidth = () => (typeof window === "undefined" ? DEFAULT_SESSION_WIDTH : window.innerWidth * 0.45)
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
 
 export function getAvatarColors(key?: string) {
@@ -286,9 +291,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           width: DEFAULT_FILE_TREE_WIDTH,
           tab: "changes" as "changes" | "all",
         },
-        session: {
-          width: DEFAULT_SESSION_WIDTH,
-        },
         mobileSidebar: {
           opened: false,
         },
@@ -301,6 +303,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           selection: { server: server.key } as HomeProjectSelection,
         },
       }),
+    )
+
+    // Chat/review split width lives in the shared global scope, not the per-server layout
+    // store, so a width the user sets in one session is remembered across every session and
+    // server (each Forge task connects to its own server). `undefined` marks "never resized",
+    // which the getter resolves to the smallest review pane at read time.
+    const [sessionWidthStore, setSessionWidthStore] = persisted(
+      Persist.global("layout-session-width"),
+      createStore({ width: undefined as number | undefined }),
     )
 
     const MAX_SESSION_KEYS = 50
@@ -709,13 +720,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       session: {
-        width: createMemo(() => store.session?.width ?? DEFAULT_SESSION_WIDTH),
+        width: createMemo(() => resolveSessionWidth(sessionWidthStore.width, maxSessionWidth())),
         resize(width: number) {
-          if (!store.session) {
-            setStore("session", { width })
-            return
-          }
-          setStore("session", "width", width)
+          setSessionWidthStore("width", width)
         },
       },
       mobileSidebar: {

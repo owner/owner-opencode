@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot, createSignal } from "solid-js"
-import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys } from "./layout-helpers"
+import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys, resolveSessionWidth } from "./layout-helpers"
+
+describe("resolveSessionWidth", () => {
+  test("defaults to the max chat width (smallest review pane) when never set", () => {
+    expect(resolveSessionWidth(undefined, 900)).toBe(900)
+  })
+
+  test("uses the remembered width once the user has resized", () => {
+    expect(resolveSessionWidth(720, 900)).toBe(720)
+  })
+
+  test("keeps a remembered width of zero rather than falling back", () => {
+    expect(resolveSessionWidth(0, 900)).toBe(0)
+  })
+})
 
 describe("layout session-key helpers", () => {
   test("couples touch and scroll seed in order", () => {
