@@ -1,9 +1,9 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
+import { OWNERLING_MODEL_TIERS } from "@owner/ownerling-models"
 import { Component, ComponentProps, createMemo, JSX, Show, ValidComponent } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { popularProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -16,6 +16,42 @@ import { decode64 } from "@/utils/base64"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
+
+const forgeModelTiers = new Map(
+  OWNERLING_MODEL_TIERS.flatMap((tier) =>
+    tier.models.map(
+      (model) =>
+        [
+          `${model.providerID}:${model.modelID}`,
+          { label: tier.label, pricing: model.pricing, tier: tier.tier },
+        ] as const,
+    ),
+  ),
+)
+
+const tierColor = {
+  frontier: "var(--oc-tier-frontier)",
+  balanced: "var(--oc-tier-balanced)",
+  performance: "var(--oc-tier-performance)",
+}
+
+function forgeModelTier(model: { provider: { id: string }; id: string }) {
+  return forgeModelTiers.get(`${model.provider.id}:${model.id}`)
+}
+
+function formatPrice(perMillion: number) {
+  return `$${perMillion.toFixed(2)}`
+}
+
+function ModelPrice(props: { model: Parameters<typeof forgeModelTier>[0] }) {
+  const tier = forgeModelTier(props.model)
+  if (!tier) return
+  return (
+    <span class="ml-auto shrink-0 text-text-weak tabular-nums">
+      {formatPrice(tier.pricing.inputPerMillion)} / {formatPrice(tier.pricing.outputPerMillion)}
+    </span>
+  )
+}
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 
@@ -46,13 +82,27 @@ const ModelList: Component<{
       current={model.current()}
       filterKeys={["provider.name", "name", "id"]}
       sortBy={(a, b) => a.name.localeCompare(b.name)}
-      groupBy={(x) => x.provider.name}
+      groupBy={(model) => forgeModelTier(model)?.label ?? "Other models"}
       sortGroupsBy={(a, b) => {
-        const aProvider = a.items[0].provider.id
-        const bProvider = b.items[0].provider.id
-        if (popularProviders.includes(aProvider) && !popularProviders.includes(bProvider)) return -1
-        if (!popularProviders.includes(aProvider) && popularProviders.includes(bProvider)) return 1
-        return popularProviders.indexOf(aProvider) - popularProviders.indexOf(bProvider)
+        const aTier = forgeModelTier(a.items[0])
+        const bTier = forgeModelTier(b.items[0])
+        if (!aTier) return bTier ? 1 : 0
+        if (!bTier) return -1
+        return (
+          OWNERLING_MODEL_TIERS.findIndex((tier) => tier.tier === aTier.tier) -
+          OWNERLING_MODEL_TIERS.findIndex((tier) => tier.tier === bTier.tier)
+        )
+      }}
+      groupHeader={(group) => {
+        const tier = forgeModelTier(group.items[0])
+        return (
+          <span
+            class="font-bold"
+            style={{ color: tier ? tierColor[tier.tier] : "var(--oc-ink-muted)" }}
+          >
+            {group.category}
+          </span>
+        )
       }}
       itemWrapper={(item, node) => (
         <Tooltip
@@ -75,6 +125,7 @@ const ModelList: Component<{
       {(i) => (
         <div class="w-full flex items-center gap-x-2 text-13-regular">
           <span class="truncate">{i.name}</span>
+          <ModelPrice model={i} />
           <Show when={isFree(i.provider.id, i.cost)}>
             <Tag>{language.t("model.tag.free")}</Tag>
           </Show>
