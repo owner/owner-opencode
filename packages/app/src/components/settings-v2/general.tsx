@@ -658,9 +658,11 @@ export const SettingsGeneralV2: Component<{
           title={language.t("settings.updates.row.check.title")}
           description={language.t("settings.updates.row.check.description")}
         >
-          <ButtonV2 size="normal" variant="neutral" disabled={!updater.action().run} onClick={updater.run}>
-            {language.t(updater.action().label)}
-          </ButtonV2>
+          <Show when={updater.visible()}>
+            <ButtonV2 size="normal" variant="neutral" disabled={!updater.action().run} onClick={updater.run}>
+              {language.t(updater.action().label)}
+            </ButtonV2>
+          </Show>
         </SettingsRowV2>
       </SettingsListV2>
     </div>

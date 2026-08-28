@@ -1,4 +1,5 @@
-import { createMemo } from "solid-js"
+import { createEffect, createMemo, onCleanup } from "solid-js"
+import { toaster } from "@opencode-ai/ui/toast"
 import type { UpdaterState } from "@/updater"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
@@ -22,13 +23,19 @@ export function updaterAction(state: UpdaterState | undefined) {
   }
 }
 
+export function isUpdaterActionVisible(state: UpdaterState | undefined) {
+  return state?.status !== "downloading"
+}
+
 export function useUpdaterAction() {
   const platform = usePlatform()
   const language = useLanguage()
   const action = createMemo(() => updaterAction(platform.updater?.state()))
+  const visible = createMemo(() => isUpdaterActionVisible(platform.updater?.state()))
 
   return {
     action,
+    visible,
     async run() {
       const run = action().run
       if (run === "install") return platform.updater?.install()
@@ -48,4 +55,31 @@ export function useUpdaterAction() {
       }
     },
   }
+}
+
+export function useInstallingUpdateToast() {
+  const platform = usePlatform()
+  const language = useLanguage()
+  let shown = false
+  let toastId: number | undefined
+
+  createEffect(() => {
+    if (platform.updater?.state().status !== "installing") {
+      shown = false
+      if (toastId !== undefined) toaster.dismiss(toastId)
+      toastId = undefined
+      return
+    }
+    if (shown) return
+    shown = true
+    toastId = showToast({
+      persistent: true,
+      title: language.t("toast.update.installing.title"),
+      description: language.t("toast.update.installing.description"),
+    })
+  })
+
+  onCleanup(() => {
+    if (toastId !== undefined) toaster.dismiss(toastId)
+  })
 }

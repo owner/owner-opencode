@@ -3,12 +3,14 @@ import { useNavigate } from "@solidjs/router"
 import { DebugBar } from "@/components/debug-bar"
 import { HelpButton } from "@/components/help-button"
 import { Titlebar, type TitlebarUpdate } from "@/components/titlebar"
+import { useInstallingUpdateToast } from "@/components/updater-action"
 import { usePlatform } from "@/context/platform"
 import { setNavigate } from "@/utils/notification-click"
 import { setV2Toast, ToastRegion } from "@/utils/toast"
 
 export default function NewLayout(props: ParentProps) {
   const platform = usePlatform()
+  useInstallingUpdateToast()
   const navigate = useNavigate()
   setNavigate(navigate)
 

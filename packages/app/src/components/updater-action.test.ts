@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { updaterAction } from "./updater-action"
+import { isUpdaterActionVisible, updaterAction } from "./updater-action"
 
 describe("updaterAction", () => {
   test("disables update actions when the platform has no updater", () => {
@@ -22,5 +22,10 @@ describe("updaterAction", () => {
     expect(updaterAction({ status: "installing", version: "2.0.0" })).toEqual({
       label: "settings.updates.action.installing",
     })
+  })
+
+  test("hides the update action while an update downloads", () => {
+    expect(isUpdaterActionVisible({ status: "downloading", version: "2.0.0" })).toBe(false)
+    expect(isUpdaterActionVisible({ status: "ready", version: "2.0.0" })).toBe(true)
   })
 })
