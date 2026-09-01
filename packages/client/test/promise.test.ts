@@ -85,6 +85,21 @@ test("config.get returns ordered config entries for a location", async () => {
   expect(request?.url).toBe("http://localhost:3000/api/config?location%5Bdirectory%5D=%2Ftmp%2Fproject")
 })
 
+test("preserves a path-prefixed base URL", async () => {
+  let request: Request | undefined
+  const client = OpenCode.make({
+    baseUrl: "http://localhost:3000/proxy",
+    fetch: async (input, init) => {
+      request = input instanceof Request ? input : new Request(input, init)
+      return Response.json({ healthy: true, version: "2.0.0" })
+    },
+  })
+
+  await client.health.get()
+
+  expect(request?.url).toBe("http://localhost:3000/proxy/api/health")
+})
+
 test("vcs.base and committed diffs preserve location and explicit base on the wire", async () => {
   const requests: Request[] = []
   const location = { directory: "/repo", project: { id: "global", directory: "/repo", canonical: "/repo" } }
