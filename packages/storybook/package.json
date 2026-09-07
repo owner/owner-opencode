@@ -20,7 +20,7 @@
     "@storybook/addon-onboarding": "10.4.4",
     "@storybook/addon-vitest": "10.4.4",
     "@storybook/builder-vite": "10.4.4",
-    "@tsconfig/node22": "catalog:",
+    "@tsconfig/node24": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "18.0.25",
     "react": "18.2.0",

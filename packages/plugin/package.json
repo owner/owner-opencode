@@ -53,7 +53,7 @@
     "@opentui/core": "catalog:",
     "@opentui/solid": "catalog:",
     "@tsconfig/bun": "catalog:",
-    "@tsconfig/node22": "catalog:",
+    "@tsconfig/node24": "catalog:",
     "@types/node": "catalog:",
     "solid-js": "catalog:",
     "typescript": "catalog:",

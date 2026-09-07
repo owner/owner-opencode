@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
-    "@tsconfig/node22": "catalog:",
+    "@tsconfig/node24": "catalog:",
     "@types/bun": "catalog:",
     "@typescript/native-preview": "catalog:",
     "wrangler": "4.110.0"
