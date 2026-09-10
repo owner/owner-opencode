@@ -102,7 +102,7 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     if (state === "show") return true
     if (latestSet().has(key)) return true
     const date = release().get(key)
-    if (!date?.isValid) return true
+    if (!date?.isValid || date.toMillis() === 0) return true
     return false
   }
 
