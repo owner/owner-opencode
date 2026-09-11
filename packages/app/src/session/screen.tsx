@@ -200,9 +200,9 @@ export function SessionScreen(props: { session: SessionModel }) {
     <>
       <Show when={!isDesktop() && !!session.identity.params.id}>{mobileTabs()}</Show>
       {/* Surface query errors without suspending session metadata while messages load. */}
-      <Show when={timeline.resource.error}>
+      <Show keyed when={timeline.resource.error}>
         {(error) => {
-          throw error()
+          throw error
         }}
       </Show>
       <div class="relative flex-1 min-h-0 overflow-hidden">
