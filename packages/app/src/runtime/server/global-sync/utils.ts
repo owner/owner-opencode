@@ -106,7 +106,10 @@ export function normalizeProviderList(
       status: model.status,
       options: model.settings ?? {},
       headers: model.headers ?? {},
-      release_date: new Date(model.time.released).toISOString().slice(0, 10),
+      // A zero timestamp means the provider/config never supplied a release
+      // date. Keep it unparseable so the model selector treats the model as
+      // undated (visible) instead of as released in 1970 (hidden).
+      release_date: model.time.released ? new Date(model.time.released).toISOString().slice(0, 10) : "",
       variants: Object.fromEntries(model.variants.map((variant) => [variant.id, variant.settings ?? {}])),
     }
   }
