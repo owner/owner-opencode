@@ -31,6 +31,7 @@ import { displayName, getProjectAvatarSource, projectForSession } from "@/shell/
 import { parseCommentNote, readPromptPresentation } from "@/composer/comment-note"
 import { useCommand } from "@/shell/commands/command"
 import { useSettings } from "@/settings/model"
+import { useEmbedded } from "@/runtime/embed"
 import { SessionTitleHeader } from "../session-identity-header"
 
 type BackgroundTask = {
@@ -357,6 +358,7 @@ function MessageTimelineView(
     pending: TimelineController["pending"]
   },
 ) {
+  const embedded = useEmbedded()
   const language = useLanguage()
   const data = useData()
   const server = useServer()
@@ -574,7 +576,7 @@ function MessageTimelineView(
       }}
       renderRow={(row, onSizeChange) => <rowRenderer.Row row={row} onSizeChange={onSizeChange} />}
       header={
-        <Show when={!props.hideHeader}>
+        <Show when={!props.hideHeader && !embedded.embedded}>
           <SessionTitleHeader>
             <div class="h-12 w-full flex items-center justify-between gap-2">
               <div class="flex items-center gap-1 min-w-0 flex-1">
