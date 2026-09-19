@@ -523,7 +523,7 @@ export function createTimelineVirtualizer(input: Input) {
           class="relative min-w-0 w-full h-full"
           style={{ "--sticky-accordion-top": input.showHeader() ? "48px" : "0px" }}
         >
-          <Show when={input.showHeader()} fallback={<div aria-hidden="true" class="h-4 md:hidden" />}>
+          <Show when={input.showHeader()} fallback={<div aria-hidden="true" class="h-4" />}>
             {props.header}
           </Show>
           <div

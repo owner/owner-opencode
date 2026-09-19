@@ -413,7 +413,9 @@ function MessageTimelineView(
     }),
   )
   const turnPadding = () => "px-4 md:px-5"
-  const showHeader = createMemo(() => !props.hideHeader && (props.data.showHeader() || workspaceSession()))
+  const showHeader = createMemo(
+    () => !embedded.embedded && !props.hideHeader && (props.data.showHeader() || workspaceSession()),
+  )
   const pinned = createMemo(() => props.pinned)
   const messageByID = projection.messageByID
   const virtualized = createTimelineVirtualizer({
