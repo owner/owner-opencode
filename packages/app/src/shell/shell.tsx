@@ -46,7 +46,7 @@ export default function Layout(props: ParentProps) {
         style={{
           // Native Windows chrome supplies the gap; retain paint clearance for the panels' outer outlines.
           "--shell-top-inset": embedded.embedded
-            ? "0px"
+            ? "8px"
             : bottomTitlebar()
             ? "max(0px, calc(8px - env(safe-area-inset-top, 0px)))"
             : platform.platform === "desktop" && platform.os === "windows"

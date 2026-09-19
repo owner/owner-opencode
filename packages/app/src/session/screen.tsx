@@ -127,7 +127,9 @@ export function SessionScreen(props: { session: SessionModel }) {
     return key
   })
   const review = createSessionReview({ session, screen, deferRender: () => store.deferRender })
-  const mobileView = createMemo(() => (screen.terminal.open() ? "terminal" : review.mobile.tab()))
+  const mobileView = createMemo(() =>
+    embedded.embedded ? "session" : screen.terminal.open() ? "terminal" : review.mobile.tab(),
+  )
   const conversationVisible = createMemo(() => isDesktop() || mobileView() === "session")
   createEffect(() => {
     if (!isDesktop() && screen.terminal.open()) setStore("mobileTerminalCached", true)
@@ -200,7 +202,7 @@ export function SessionScreen(props: { session: SessionModel }) {
 
   const sessionPanelContent = () => (
     <>
-      <Show when={!isDesktop() && !!session.identity.params.id}>{mobileTabs()}</Show>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id}>{mobileTabs()}</Show>
       {/* Surface query errors without suspending session metadata while messages load. */}
       <Show when={timeline.resource.error}>
         {(error) => {
