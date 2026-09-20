@@ -344,14 +344,33 @@ export function createTimelineVirtualizer(input: Input) {
 
   const bindListRoot = (root: HTMLDivElement) => {
     if (root === listRoot()) return
-    // TanStack owns anchoring; browser scroll anchoring would fight its adjustments.
-    root.style.overflowAnchor = "none"
-    setListRoot(root)
-    scrollTop = root.scrollTop
-    maxScroll = root.scrollHeight - root.clientHeight
-    input.setScrollRef(root)
-    viewportObserver?.observe(root)
-    settleColdBottom()
+    let adoptionObserver: ResizeObserver | undefined
+    let active = true
+    const bind = () => {
+      // Solid can mount inside an inert template document. TanStack captures its
+      // window on attachment and cannot install observers until the node is adopted.
+      if (!active || root === listRoot() || !root.ownerDocument.defaultView) return
+      adoptionObserver?.disconnect()
+      // TanStack owns anchoring; browser scroll anchoring would fight its adjustments.
+      root.style.overflowAnchor = "none"
+      setListRoot(root)
+      scrollTop = root.scrollTop
+      maxScroll = root.scrollHeight - root.clientHeight
+      input.setScrollRef(root)
+      viewportObserver?.observe(root)
+      settleColdBottom()
+    }
+    if (root.ownerDocument.defaultView) {
+      bind()
+      return
+    }
+    adoptionObserver = new ResizeObserver(bind)
+    adoptionObserver.observe(root)
+    onCleanup(() => {
+      active = false
+      adoptionObserver?.disconnect()
+    })
+    queueMicrotask(bind)
   }
 
   // Upward input is the one intent geometry cannot recover: nudging up while still a pixel from
