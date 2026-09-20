@@ -438,6 +438,25 @@ export function createTimelineVirtualizer(input: Input) {
     input.onHistoryScroll()
   }
 
+  let offsetCheck: number | undefined
+  onMount(() => {
+    // A remounted scroll view can reset scrollTop without dispatching scroll. Keep
+    // TanStack's range in sync so its previously virtualized rows do not leave a gap.
+    offsetCheck = window.setInterval(() => {
+      const root = listRoot()
+      if (!root?.isConnected || !reportOffset) return
+      const observed = virtualizer.scrollOffset ?? 0
+      if (Math.abs(root.scrollTop - observed) <= 1) return
+      if (pointerHeld && root.scrollTop < observed) input.onUnpin()
+      reportOffset(root.scrollTop, false)
+      if (input.pinned()) virtualizer.scrollToEnd()
+      input.onScheduleScrollState(root)
+    }, 200)
+  })
+  onCleanup(() => {
+    if (offsetCheck !== undefined) window.clearInterval(offsetCheck)
+  })
+
   function View(props: ViewProps) {
     function VirtualRow(rowProps: { rowKey: string }) {
       let element: HTMLDivElement
