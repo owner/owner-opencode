@@ -1,4 +1,11 @@
-import { Component, Show, createMemo, createResource } from "solid-js"
+import {
+  Component,
+  Show,
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+} from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { Button } from "@opencode-ai/ui/button"
 import { Select } from "@opencode-ai/ui/select"
@@ -68,6 +75,56 @@ const AutoApprovePermissionsSetting: Component = () => {
       </div>
     </SettingsRow>
   )
+}
+
+const DeveloperModeSetting: Component = () => {
+  const language = useLanguage()
+  const [enabled, setEnabled] = createSignal(readDeveloperMode())
+  const onDeveloperModeChange = (event: Event) => {
+    if (event instanceof CustomEvent && typeof event.detail === "boolean") {
+      setEnabled(event.detail)
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener(
+      "owner-forge-ui:developer-mode-change",
+      onDeveloperModeChange,
+    )
+    onCleanup(() =>
+      window.removeEventListener(
+        "owner-forge-ui:developer-mode-change",
+        onDeveloperModeChange,
+      ),
+    )
+  }
+
+  return (
+    <SettingsRow
+      title={language.t("settings.general.row.developerMode.title")}
+      description={language.t("settings.general.row.developerMode.description")}
+    >
+      <div data-action="settings-developer-mode">
+        <Switch
+          checked={enabled()}
+          onChange={(value) => {
+            setEnabled(value)
+            window.dispatchEvent(
+              new CustomEvent("owner-forge-ui:developer-mode-change", {
+                detail: value,
+              }),
+            )
+          }}
+        />
+      </div>
+    </SettingsRow>
+  )
+}
+
+function readDeveloperMode() {
+  if (typeof window === "undefined") return true
+  const value = window.localStorage.getItem("owner-forge-ui.developer-mode")
+  return value === null ? true : value === "1"
 }
 
 const WorkspaceDestinationSetting: Component = () => {
@@ -389,6 +446,8 @@ export const SettingsGeneral: Component<{
             />
           </div>
         </SettingsRow>
+
+        <DeveloperModeSetting />
 
         <SettingsRow
           title={language.t("settings.general.row.editToolPartsExpanded.title")}
