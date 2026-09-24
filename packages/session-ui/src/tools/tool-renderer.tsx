@@ -1509,17 +1509,18 @@ function HighlightedCode(props: { text: string }) {
   )
 }
 
-function ExecuteTool(props: ToolProps & { charon?: boolean }) {
+function ExecuteTool(props: ToolProps & { integration?: "charon" | "executor" }) {
   const i18n = useI18n()
   const pending = () => props.status === "streaming" || props.status === "running"
   const code = createMemo(() => (typeof props.input.code === "string" ? props.input.code : ""))
   const output = createMemo(() => stripAnsi(props.output ?? "").replace(/\r\n?/g, "\n"))
   const sawPending = pending()
-  const title = () => (props.charon ? i18n.t("ui.basicTool.called", { tool: props.tool }) : i18n.t("ui.tool.execute"))
+  const title = () =>
+    props.integration ? i18n.t("ui.basicTool.called", { tool: props.tool }) : i18n.t("ui.tool.execute")
   return (
     <BasicTool
       {...props}
-      icon={props.charon ? "mcp" : "console"}
+      icon={props.integration ? "mcp" : "console"}
       rail={false}
       compact
       allowOpenWhilePending
@@ -1538,7 +1539,7 @@ function ExecuteTool(props: ToolProps & { charon?: boolean }) {
       )}
     >
       <ConsoleOutput copy={code()} variant="shell">
-        <Show when={props.charon} fallback={<span data-slot="bash-command">{code()}</span>}>
+        <Show when={props.integration} fallback={<span data-slot="bash-command">{code()}</span>}>
           <HighlightedCode text={code()} />
         </Show>
         <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
@@ -1557,7 +1558,14 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "charon_execute",
   render(props) {
-    return <ExecuteTool {...props} charon />
+    return <ExecuteTool {...props} integration="charon" />
+  },
+})
+
+ToolRegistry.register({
+  name: "executor_execute",
+  render(props) {
+    return <ExecuteTool {...props} integration="executor" />
   },
 })
 
