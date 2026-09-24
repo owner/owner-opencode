@@ -278,7 +278,7 @@ describe("Npm.add", () => {
     expect(
       await fs.stat(path.join(path.dirname(entry.directory), "fixture-subdirectory-dependency", "package.json")),
     ).toBeTruthy()
-  })
+  }, 30_000)
 
   // Several real Git installs and updates exceed Bun's default timeout on Windows.
   test("checks and updates mutable Git packages without changing pinned installs", async () => {
