@@ -922,8 +922,9 @@ test("error investigations repeatedly seed editable home drafts without creating
 })
 
 test("shows jump to latest after scrolling one line above the final message", async () => {
+  await using state = await tmpdir()
   const session = {
-    id: "dummy",
+    id: "ses_jump_latest",
     title: "Demo session",
     projectID: "project",
     location: { directory },
@@ -942,14 +943,20 @@ test("shows jump to latest after scrolling one line above the final message", as
   await using setup = await createAppFixture({
     width: 80,
     height: 20,
-    config: { animations: false, keybinds: { "session.line.up": "f6", "session.line.down": "f7" } },
-    args: { sessionID: "dummy" },
+    state: state.path,
+    config: {
+      animations: false,
+      tabs: { enabled: false },
+      keybinds: { "session.line.up": "f6", "session.line.down": "f7" },
+    },
+    args: { sessionID: "ses_jump_latest" },
     fetch: (url) => {
       if (url.pathname === "/api/session") return json({ data: [session], cursor: {} })
-      if (url.pathname === "/api/session/dummy") return json({ data: session })
-      if (url.pathname === "/api/session/dummy/message") return json({ data: messages.toReversed(), cursor: {} })
-      if (url.pathname === "/api/session/dummy/inbox") return json({ data: [] })
-      if (url.pathname === "/api/session/dummy/permission") return json({ data: [] })
+      if (url.pathname === "/api/session/ses_jump_latest") return json({ data: session })
+      if (url.pathname === "/api/session/ses_jump_latest/message")
+        return json({ data: messages.toReversed(), cursor: {} })
+      if (url.pathname === "/api/session/ses_jump_latest/inbox") return json({ data: [] })
+      if (url.pathname === "/api/session/ses_jump_latest/permission") return json({ data: [] })
     },
   })
 
@@ -963,19 +970,25 @@ test("shows jump to latest after scrolling one line above the final message", as
   if (!scroll) throw new Error("session transcript scrollbox was not found")
   const maximum = () => Math.max(0, scroll.scrollHeight - scroll.viewport.height)
 
+  await setup.waitForVisualIdle()
+  await setup.waitFor(() => scroll.scrollTop === maximum())
   expect(scroll.scrollTop).toBe(maximum())
   const initial = setup.captureCharFrame().split("\n")
   expect(initial.find((line) => line.includes("Jump to latest"))).toBeUndefined()
   expect(initial[initial.findIndex((line) => line.includes("Final visible message")) + 1]).toContain("┃")
 
   setup.mockInput.pressKey("F6")
-  const clipped = (await setup.waitForFrame((frame) => frame.includes("Jump to latest"))).split("\n")
+  const clipped = (
+    await setup.waitForFrame((frame) => frame.includes("Jump to latest") && scroll.scrollTop === maximum() - 1)
+  ).split("\n")
   expect(scroll.scrollTop).toBe(maximum() - 1)
   expect(clipped.find((line) => line.includes("Jump to latest"))).toBeDefined()
   expect(clipped[clipped.findIndex((line) => line.includes("Final visible message")) + 1]).not.toContain("┃")
 
   setup.mockInput.pressKey("F7")
-  const restored = (await setup.waitForFrame((frame) => !frame.includes("Jump to latest"))).split("\n")
+  const restored = (
+    await setup.waitForFrame((frame) => !frame.includes("Jump to latest") && scroll.scrollTop === maximum())
+  ).split("\n")
   expect(scroll.scrollTop).toBe(maximum())
   expect(restored.find((line) => line.includes("Jump to latest"))).toBeUndefined()
   expect(restored[restored.findIndex((line) => line.includes("Final visible message")) + 1]).toContain("┃")

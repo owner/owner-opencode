@@ -4,6 +4,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
   For,
   Match,
   onCleanup,
@@ -49,6 +50,8 @@ import {
   currentToolOutput,
 } from "../message/current-tool-state"
 import { AssistantReasoningContent, writeClipboard } from "../message/message-content"
+import { disposeStreamingCode, highlightStreamingCode } from "../components/markdown-worker"
+import type { MarkdownToken } from "../components/markdown-worker-protocol"
 
 function ShellSubmessage(props: { text: string; animate?: boolean }) {
   let widthRef: HTMLSpanElement | undefined
@@ -1470,40 +1473,99 @@ function ConsoleOutput(props: { copy: string; children: JSX.Element; variant?: "
   )
 }
 
+function HighlightedCode(props: { text: string }) {
+  const key = `tool-execute:${createUniqueId()}`
+  const [tokens, setTokens] = createSignal<MarkdownToken[]>([])
+
+  createEffect(() => {
+    const text = props.text
+    if (!text) {
+      setTokens([])
+      return
+    }
+
+    let active = true
+    setTokens([[text, ""]])
+    void Promise.resolve()
+      .then(() => highlightStreamingCode(key, text, "javascript", true))
+      .then((result) => {
+        if (!active) return
+        setTokens([...result.stable, ...result.unstable])
+      })
+      .catch(() => {
+        // Keep the raw code visible if the shared highlighting worker is unavailable.
+      })
+    onCleanup(() => {
+      active = false
+    })
+  })
+
+  onCleanup(() => disposeStreamingCode(key))
+
+  return (
+    <span data-slot="bash-command">
+      <For each={tokens()}>{(token) => <span style={token[1]}>{token[0]}</span>}</For>
+    </span>
+  )
+}
+
+function ExecuteTool(props: ToolProps & { integration?: "charon" | "executor" }) {
+  const i18n = useI18n()
+  const pending = () => props.status === "streaming" || props.status === "running"
+  const code = createMemo(() => (typeof props.input.code === "string" ? props.input.code : ""))
+  const output = createMemo(() => stripAnsi(props.output ?? "").replace(/\r\n?/g, "\n"))
+  const sawPending = pending()
+  const title = () =>
+    props.integration ? i18n.t("ui.basicTool.called", { tool: props.tool }) : i18n.t("ui.tool.execute")
+  return (
+    <BasicTool
+      {...props}
+      icon={props.integration ? "mcp" : "console"}
+      rail={false}
+      compact
+      allowOpenWhilePending
+      hasContent={Boolean(code() || output())}
+      trigger={(open) => (
+        <div data-slot="basic-tool-tool-info-structured">
+          <div data-slot="basic-tool-tool-info-main">
+            <span data-slot="basic-tool-tool-title">
+              <TextShimmer text={title()} active={pending()} />
+            </span>
+            <Show when={!open() && code()}>
+              <ShellSubmessage text={code().split("\n")[0]} animate={sawPending} />
+            </Show>
+          </div>
+        </div>
+      )}
+    >
+      <ConsoleOutput copy={code()} variant="shell">
+        <Show when={props.integration} fallback={<span data-slot="bash-command">{code()}</span>}>
+          <HighlightedCode text={code()} />
+        </Show>
+        <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
+      </ConsoleOutput>
+    </BasicTool>
+  )
+}
+
 ToolRegistry.register({
   name: "execute",
   render(props) {
-    const i18n = useI18n()
-    const pending = () => props.status === "streaming" || props.status === "running"
-    const code = createMemo(() => (typeof props.input.code === "string" ? props.input.code : ""))
-    const output = createMemo(() => stripAnsi(props.output ?? "").replace(/\r\n?/g, "\n"))
-    const sawPending = pending()
-    return (
-      <BasicTool
-        {...props}
-        icon="console"
-        rail={false}
-        compact
-        allowOpenWhilePending
-        trigger={(open) => (
-          <div data-slot="basic-tool-tool-info-structured">
-            <div data-slot="basic-tool-tool-info-main">
-              <span data-slot="basic-tool-tool-title">
-                <TextShimmer text={i18n.t("ui.tool.execute")} active={pending()} />
-              </span>
-              <Show when={!open() && code()}>
-                <ShellSubmessage text={code().split("\n")[0]} animate={sawPending} />
-              </Show>
-            </div>
-          </div>
-        )}
-      >
-        <ConsoleOutput copy={code()} variant="shell">
-          <span data-slot="bash-command">{code()}</span>
-          <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
-        </ConsoleOutput>
-      </BasicTool>
-    )
+    return <ExecuteTool {...props} />
+  },
+})
+
+ToolRegistry.register({
+  name: "charon_execute",
+  render(props) {
+    return <ExecuteTool {...props} integration="charon" />
+  },
+})
+
+ToolRegistry.register({
+  name: "executor_execute",
+  render(props) {
+    return <ExecuteTool {...props} integration="executor" />
   },
 })
 

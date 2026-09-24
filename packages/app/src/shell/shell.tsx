@@ -8,6 +8,7 @@ import { ToastRegion } from "@/shell/notifications/toast"
 import { TitlebarRightProvider } from "@/shell/titlebar/right-slot"
 import { useSettingsSurface } from "@/settings/surface"
 import { useSettings } from "@/settings/model"
+import { useEmbedded } from "@/runtime/embed"
 
 const DebugBar = lazy(() => import("@/shell/debug/debug-bar").then((module) => ({ default: module.DebugBar })))
 const SettingsScreen = lazy(() => import("@/settings/shell").then((module) => ({ default: module.SettingsScreen })))
@@ -16,6 +17,7 @@ export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const settings = useSettingsSurface()
   const preferences = useSettings()
+  const embedded = useEmbedded()
   const mobile = createMediaQuery("(max-width: 767px)")
   const [state, setState] = createStore({
     debugTools: false,
@@ -23,7 +25,7 @@ export default function Layout(props: ParentProps) {
     tabsMount: undefined as HTMLElement | undefined,
   })
   const verticalTabs = () => preferences.appearance.tabLayout() === "vertical" && !mobile()
-  const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
+  const bottomTitlebar = () => !embedded.embedded && mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
 
   const update: TitlebarUpdate = {
     get version() {
@@ -43,7 +45,9 @@ export default function Layout(props: ParentProps) {
         class="relative bg-v2-background-bg-deep flex-1 min-h-0 min-w-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text"
         style={{
           // Native Windows chrome supplies the gap; retain paint clearance for the panels' outer outlines.
-          "--shell-top-inset": bottomTitlebar()
+          "--shell-top-inset": embedded.embedded
+            ? "8px"
+            : bottomTitlebar()
             ? "max(0px, calc(8px - env(safe-area-inset-top, 0px)))"
             : platform.platform === "desktop" && platform.os === "windows"
               ? "1px"
@@ -51,17 +55,19 @@ export default function Layout(props: ParentProps) {
           "--shell-bottom-inset": bottomTitlebar() ? "8px" : "max(0px, calc(8px - env(safe-area-inset-bottom, 0px)))",
         }}
       >
-        <Titlebar
-          update={update}
-          verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined}
-          debugTools={
-            import.meta.env.DEV
-              ? { visible: state.debugTools, toggle: () => setState("debugTools", (value) => !value) }
-              : undefined
-          }
-        />
+        <Show when={!embedded.embedded}>
+          <Titlebar
+            update={update}
+            verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined}
+            debugTools={
+              import.meta.env.DEV
+                ? { visible: state.debugTools, toggle: () => setState("debugTools", (value) => !value) }
+                : undefined
+            }
+          />
+        </Show>
         <div class="flex flex-1 min-h-0 min-w-0 flex-row">
-          <Show when={verticalTabs()}>
+          <Show when={!embedded.embedded && verticalTabs()}>
             <aside
               ref={(element) => setState("tabsMount", element)}
               data-slot="vertical-tabs-sidebar"

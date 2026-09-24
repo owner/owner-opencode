@@ -30,6 +30,7 @@ import { createSessionTimelineInteraction } from "./timeline/interaction"
 import { ActiveSessionComposerRegion, createActiveSessionRegion } from "./composer/region"
 import { SessionIdentityHeader } from "./session-identity-header"
 import { createAnimatedPresence } from "@/runtime/animated-presence"
+import { useEmbedded } from "@/runtime/embed"
 
 const SessionMobileFiles = lazy(async () => {
   const { SessionMobileFiles } = await import("./files/session-mobile-files")
@@ -38,6 +39,7 @@ const SessionMobileFiles = lazy(async () => {
 
 export function SessionScreen(props: { session: SessionModel }) {
   const session = props.session
+  const embedded = useEmbedded()
   const server = useServer()
   const detailsProject = createMemo(() => {
     const info = session.data.info()
@@ -125,7 +127,9 @@ export function SessionScreen(props: { session: SessionModel }) {
     return key
   })
   const review = createSessionReview({ session, screen, deferRender: () => store.deferRender })
-  const mobileView = createMemo(() => (screen.terminal.open() ? "terminal" : review.mobile.tab()))
+  const mobileView = createMemo(() =>
+    embedded.embedded ? "session" : screen.terminal.open() ? "terminal" : review.mobile.tab(),
+  )
   const conversationVisible = createMemo(() => isDesktop() || mobileView() === "session")
   createEffect(() => {
     if (!isDesktop() && screen.terminal.open()) setStore("mobileTerminalCached", true)
@@ -198,7 +202,7 @@ export function SessionScreen(props: { session: SessionModel }) {
 
   const sessionPanelContent = () => (
     <>
-      <Show when={!isDesktop() && !!session.identity.params.id}>{mobileTabs()}</Show>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id}>{mobileTabs()}</Show>
       {/* Surface query errors without suspending session metadata while messages load. */}
       <Show when={timeline.resource.error}>
         {(error) => {
@@ -273,7 +277,9 @@ export function SessionScreen(props: { session: SessionModel }) {
 
   return (
     <>
-      <SessionHeader />
+      <Show when={!embedded.embedded}>
+        <SessionHeader />
+      </Show>
       <div class="flex-1 min-h-0 flex flex-col gap-2 px-2 pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]">
         <div ref={screen.panel.ref} class="relative flex-1 min-h-0 flex flex-col md:flex-row gap-2">
           <div
