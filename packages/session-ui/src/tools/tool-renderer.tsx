@@ -1470,40 +1470,53 @@ function ConsoleOutput(props: { copy: string; children: JSX.Element; variant?: "
   )
 }
 
+function ExecuteTool(props: ToolProps & { charon?: boolean }) {
+  const i18n = useI18n()
+  const pending = () => props.status === "streaming" || props.status === "running"
+  const code = createMemo(() => (typeof props.input.code === "string" ? props.input.code : ""))
+  const output = createMemo(() => stripAnsi(props.output ?? "").replace(/\r\n?/g, "\n"))
+  const sawPending = pending()
+  const title = () => (props.charon ? i18n.t("ui.basicTool.called", { tool: props.tool }) : i18n.t("ui.tool.execute"))
+  return (
+    <BasicTool
+      {...props}
+      icon={props.charon ? "mcp" : "console"}
+      rail={false}
+      compact
+      allowOpenWhilePending
+      hasContent={Boolean(code() || output())}
+      trigger={(open) => (
+        <div data-slot="basic-tool-tool-info-structured">
+          <div data-slot="basic-tool-tool-info-main">
+            <span data-slot="basic-tool-tool-title">
+              <TextShimmer text={title()} active={pending()} />
+            </span>
+            <Show when={!open() && code()}>
+              <ShellSubmessage text={code().split("\n")[0]} animate={sawPending} />
+            </Show>
+          </div>
+        </div>
+      )}
+    >
+      <ConsoleOutput copy={code()} variant="shell">
+        <span data-slot="bash-command">{code()}</span>
+        <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
+      </ConsoleOutput>
+    </BasicTool>
+  )
+}
+
 ToolRegistry.register({
   name: "execute",
   render(props) {
-    const i18n = useI18n()
-    const pending = () => props.status === "streaming" || props.status === "running"
-    const code = createMemo(() => (typeof props.input.code === "string" ? props.input.code : ""))
-    const output = createMemo(() => stripAnsi(props.output ?? "").replace(/\r\n?/g, "\n"))
-    const sawPending = pending()
-    return (
-      <BasicTool
-        {...props}
-        icon="console"
-        rail={false}
-        compact
-        allowOpenWhilePending
-        trigger={(open) => (
-          <div data-slot="basic-tool-tool-info-structured">
-            <div data-slot="basic-tool-tool-info-main">
-              <span data-slot="basic-tool-tool-title">
-                <TextShimmer text={i18n.t("ui.tool.execute")} active={pending()} />
-              </span>
-              <Show when={!open() && code()}>
-                <ShellSubmessage text={code().split("\n")[0]} animate={sawPending} />
-              </Show>
-            </div>
-          </div>
-        )}
-      >
-        <ConsoleOutput copy={code()} variant="shell">
-          <span data-slot="bash-command">{code()}</span>
-          <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
-        </ConsoleOutput>
-      </BasicTool>
-    )
+    return <ExecuteTool {...props} />
+  },
+})
+
+ToolRegistry.register({
+  name: "charon_execute",
+  render(props) {
+    return <ExecuteTool {...props} charon />
   },
 })
 
