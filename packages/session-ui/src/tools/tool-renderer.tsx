@@ -4,6 +4,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
   For,
   Match,
   onCleanup,
@@ -49,6 +50,8 @@ import {
   currentToolOutput,
 } from "../message/current-tool-state"
 import { AssistantReasoningContent, writeClipboard } from "../message/message-content"
+import { disposeStreamingCode, highlightStreamingCode } from "../components/markdown-worker"
+import type { MarkdownToken } from "../components/markdown-worker-protocol"
 
 function ShellSubmessage(props: { text: string; animate?: boolean }) {
   let widthRef: HTMLSpanElement | undefined
@@ -1470,6 +1473,42 @@ function ConsoleOutput(props: { copy: string; children: JSX.Element; variant?: "
   )
 }
 
+function HighlightedCode(props: { text: string }) {
+  const key = `tool-execute:${createUniqueId()}`
+  const [tokens, setTokens] = createSignal<MarkdownToken[]>([])
+
+  createEffect(() => {
+    const text = props.text
+    if (!text) {
+      setTokens([])
+      return
+    }
+
+    let active = true
+    setTokens([[text, ""]])
+    void Promise.resolve()
+      .then(() => highlightStreamingCode(key, text, "javascript", true))
+      .then((result) => {
+        if (!active) return
+        setTokens([...result.stable, ...result.unstable])
+      })
+      .catch(() => {
+        // Keep the raw code visible if the shared highlighting worker is unavailable.
+      })
+    onCleanup(() => {
+      active = false
+    })
+  })
+
+  onCleanup(() => disposeStreamingCode(key))
+
+  return (
+    <span data-slot="bash-command">
+      <For each={tokens()}>{(token) => <span style={token[1]}>{token[0]}</span>}</For>
+    </span>
+  )
+}
+
 function ExecuteTool(props: ToolProps & { charon?: boolean }) {
   const i18n = useI18n()
   const pending = () => props.status === "streaming" || props.status === "running"
@@ -1499,7 +1538,7 @@ function ExecuteTool(props: ToolProps & { charon?: boolean }) {
       )}
     >
       <ConsoleOutput copy={code()} variant="shell">
-        <span data-slot="bash-command">{code()}</span>
+        <HighlightedCode text={code()} />
         <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
       </ConsoleOutput>
     </BasicTool>
