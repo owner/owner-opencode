@@ -32,6 +32,7 @@ import { EventFeed } from "./event-feed"
 import { MigrationHandler } from "./handlers/migration"
 import { ConfigHandler } from "./handlers/config"
 import { WorkspaceHandler } from "./handlers/workspace"
+import { SharedConnectionHandler } from "./handlers/shared-connection"
 
 export const handlers = Layer.mergeAll(
   HealthHandler,
@@ -64,6 +65,7 @@ export const handlers = Layer.mergeAll(
   ReferenceHandler,
   WorktreeHandler,
   WorkspaceHandler,
+  SharedConnectionHandler,
   VcsHandler,
   ConfigHandler,
 )

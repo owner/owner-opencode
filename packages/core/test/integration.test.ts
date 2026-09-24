@@ -7,9 +7,12 @@ import { makeGlobalNode } from "@opencode-ai/util/effect/app-node"
 import { LayerNode } from "@opencode-ai/util/effect/layer-node"
 import { Bus } from "@opencode-ai/core/bus"
 import { Integration } from "@opencode-ai/core/integration"
+import { SharedConnection } from "@opencode-ai/core/shared-connection"
 import { testEffect } from "./lib/effect"
 
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([Integration.node, Credential.node, Bus.node])))
+const it = testEffect(
+  AppNodeBuilder.build(LayerNode.group([Integration.node, Credential.node, SharedConnection.node, Bus.node])),
+)
 const failingCredentialNode = makeGlobalNode({
   service: Credential.Service,
   layer: Layer.succeed(
@@ -616,4 +619,59 @@ describe("Integration", () => {
         }),
     )
   })
+
+  it.effect("uses a shared connection only when no personal connection is selected", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const shared = yield* SharedConnection.Service
+      const integrationID = Integration.ID.make("datadog")
+      yield* integrations.transform((editor) => editor.update(integrationID, () => {}))
+      yield* shared.create({ integrationID, value: { type: "key", key: "shared-read-only" } })
+
+      expect((yield* integrations.get(integrationID))?.connections).toEqual([])
+      const fallback = yield* integrations.connection.active(integrationID)
+      expect(fallback).toEqual({ type: "shared", integrationID, label: "Shared" })
+      expect(yield* integrations.connection.resolve(fallback!)).toEqual({ type: "key", key: "shared-read-only" })
+
+      const personal = yield* credentials.create({
+        integrationID,
+        value: { type: "key", key: "personal" },
+      })
+      expect((yield* integrations.get(integrationID))?.connections).toEqual([
+        { type: "credential", id: personal.id, label: personal.label },
+      ])
+      const selected = yield* integrations.connection.active(integrationID)
+      expect(selected).toEqual({ type: "credential", id: personal.id, label: personal.label })
+      expect(yield* integrations.connection.resolve(selected!)).toEqual({ type: "key", key: "personal" })
+    }),
+  )
+
+  it.effect("falls back to the shared connection when a personal OAuth refresh fails", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const shared = yield* SharedConnection.Service
+      const integrationID = Integration.ID.make("datadog")
+      const methodID = Integration.MethodID.make("oauth")
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: { id: methodID, type: "oauth", label: "Datadog OAuth" },
+          authorize: () => Effect.fail(new Error("unused")),
+          refresh: () => Effect.fail(new Error("refresh failed")),
+        }),
+      )
+      const personal = yield* credentials.create({
+        integrationID,
+        label: "Personal",
+        value: { type: "oauth", methodID, access: "expired", refresh: "refresh", expires: 0 },
+      })
+      yield* shared.create({ integrationID, value: { type: "key", key: "shared-read-only" } })
+
+      const active = yield* integrations.connection.active(integrationID)
+      expect(active).toEqual({ type: "credential", id: personal.id, label: "Personal" })
+      expect(yield* integrations.connection.resolve(active!)).toEqual({ type: "key", key: "shared-read-only" })
+    }),
+  )
 })

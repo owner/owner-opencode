@@ -128,6 +128,59 @@ it.live("activates credentials through the HttpApi", () =>
   }),
 )
 
+it.live("manages redacted shared connections behind server Basic auth", () =>
+  Effect.gen(function* () {
+    const handler = yield* ServerFetch.make({ ...options, password: "secret" })
+    const path = "http://opencode.local/api/shared-connection"
+    const denied = yield* Effect.promise(() => handler(new Request(path)))
+    expect(denied.status).toBe(401)
+
+    const headers = {
+      authorization: `Basic ${btoa("opencode:secret")}`,
+      "content-type": "application/json",
+    }
+    const created = yield* Effect.promise(() =>
+      handler(
+        new Request(path, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            integrationID: "datadog",
+            label: "Read only",
+            value: { type: "key", key: "shared-secret" },
+          }),
+        }),
+      ),
+    )
+    expect(created.status).toBe(200)
+    expect(JSON.stringify(yield* Effect.promise(() => created.json()))).not.toContain("shared-secret")
+
+    const listed = yield* Effect.promise(() => handler(new Request(path, { headers })))
+    expect(listed.status).toBe(200)
+    const listedBody = JSON.stringify(yield* Effect.promise(() => listed.json()))
+    expect(listedBody).toContain("Read only")
+    expect(listedBody).not.toContain("shared-secret")
+
+    const updated = yield* Effect.promise(() =>
+      handler(
+        new Request(`${path}/datadog`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ label: "Rotated", value: { type: "key", key: "rotated-secret" } }),
+        }),
+      ),
+    )
+    expect(updated.status).toBe(204)
+    const rotated = yield* Effect.promise(() => handler(new Request(path, { headers })))
+    const rotatedBody = JSON.stringify(yield* Effect.promise(() => rotated.json()))
+    expect(rotatedBody).toContain("Rotated")
+    expect(rotatedBody).not.toContain("rotated-secret")
+
+    const removed = yield* Effect.promise(() => handler(new Request(`${path}/datadog`, { method: "DELETE", headers })))
+    expect(removed.status).toBe(204)
+  }),
+)
+
 it.live("serves unauthenticated and answers CORS preflight when no password is configured", () =>
   Effect.gen(function* () {
     const handler = yield* ServerFetch.make(options)

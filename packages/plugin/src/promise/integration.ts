@@ -1,5 +1,5 @@
-import type { ConnectionInfo } from "@opencode-ai/client"
 import type { IntegrationApi } from "@opencode-ai/client/promise/api"
+import type { Connection } from "@opencode-ai/schema/connection"
 import { Credential } from "@opencode-ai/schema/credential"
 import { Form } from "@opencode-ai/schema/form"
 import type { Transform } from "./registration.js"
@@ -85,7 +85,7 @@ export interface IntegrationDomain extends Omit<IntegrationApi, "wellknown"> {
   readonly transform: Transform<IntegrationDraft>
   readonly reload: () => Promise<void>
   readonly connection: {
-    readonly active: (integrationID: string) => Promise<ConnectionInfo | undefined>
-    readonly resolve: (connection: ConnectionInfo) => Promise<Credential.Value | undefined>
+    readonly active: (integrationID: string) => Promise<Connection.ActiveInfo | undefined>
+    readonly resolve: (connection: Connection.ActiveInfo) => Promise<Credential.Value | undefined>
   }
 }

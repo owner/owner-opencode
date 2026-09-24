@@ -244,6 +244,13 @@ import type {
   WorkspaceCreateOutput,
   WorkspaceDestroyInput,
   WorkspaceDestroyOutput,
+  SharedConnectionListOutput,
+  SharedConnectionCreateInput,
+  SharedConnectionCreateOutput,
+  SharedConnectionUpdateInput,
+  SharedConnectionUpdateOutput,
+  SharedConnectionRemoveInput,
+  SharedConnectionRemoveOutput,
   VcsGetInput,
   VcsGetOutput,
   VcsBaseInput,
@@ -2028,6 +2035,54 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [500, 401, 400],
             empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    sharedConnection: {
+      list: (requestOptions?: RequestOptions) =>
+        request<SharedConnectionListOutput>(
+          {
+            method: "GET",
+            path: `/api/shared-connection`,
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      create: (input: SharedConnectionCreateInput, requestOptions?: RequestOptions) =>
+        request<SharedConnectionCreateOutput>(
+          {
+            method: "POST",
+            path: `/api/shared-connection`,
+            body: { integrationID: input["integrationID"], label: input["label"], value: input["value"] },
+            successStatus: 200,
+            declaredStatuses: [409, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      update: (input: SharedConnectionUpdateInput, requestOptions?: RequestOptions) =>
+        request<SharedConnectionUpdateOutput>(
+          {
+            method: "PATCH",
+            path: `/api/shared-connection/${encodeURIComponent(input.integrationID)}`,
+            body: { label: input["label"], value: input["value"] },
+            successStatus: 204,
+            declaredStatuses: [401, 400],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      remove: (input: SharedConnectionRemoveInput, requestOptions?: RequestOptions) =>
+        request<SharedConnectionRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/shared-connection/${encodeURIComponent(input.integrationID)}`,
+            successStatus: 204,
+            declaredStatuses: [401, 400],
+            empty: true,
           },
           requestOptions,
         ),

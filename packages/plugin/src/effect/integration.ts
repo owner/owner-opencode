@@ -1,5 +1,5 @@
-import type { ConnectionInfo } from "@opencode-ai/client"
 import type { IntegrationApi } from "@opencode-ai/client/effect/api"
+import type { Connection } from "@opencode-ai/schema/connection"
 import { Credential } from "@opencode-ai/schema/credential"
 import { Form } from "@opencode-ai/schema/form"
 import type { Effect, Scope } from "effect"
@@ -90,7 +90,7 @@ export interface IntegrationDomain extends Omit<IntegrationApi<unknown>, "wellkn
   readonly transform: Transform<IntegrationDraft>
   readonly reload: () => Effect.Effect<void>
   readonly connection: {
-    readonly active: (integrationID: string) => Effect.Effect<ConnectionInfo | undefined>
-    readonly resolve: (connection: ConnectionInfo) => Effect.Effect<Credential.Value | undefined, unknown>
+    readonly active: (integrationID: string) => Effect.Effect<Connection.ActiveInfo | undefined>
+    readonly resolve: (connection: Connection.ActiveInfo) => Effect.Effect<Credential.Value | undefined, unknown>
   }
 }

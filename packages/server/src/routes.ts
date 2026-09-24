@@ -8,6 +8,7 @@ import { Bus } from "@opencode-ai/core/bus"
 import { EventLogger } from "@opencode-ai/core/event-logger"
 import { FileSystemSearch } from "@opencode-ai/core/filesystem/search"
 import { Credential } from "@opencode-ai/core/credential"
+import { SharedConnection } from "@opencode-ai/core/shared-connection"
 import { Config } from "@opencode-ai/core/config"
 import { PermissionSaved } from "@opencode-ai/core/permission/saved"
 import { PtyTicket } from "@opencode-ai/core/pty/ticket"
@@ -67,6 +68,7 @@ const applicationServiceNodes = [
   PtyTicket.node,
   PersistentPty.node,
   Credential.node,
+  SharedConnection.node,
   WellKnown.node,
   PtyEnvironment.node,
   LocationServiceMap.node,
@@ -147,9 +149,13 @@ function makeRoutes<AuthError, AuthServices>(
       const services = Layer.succeedContext(context)
       const requestServices = Layer.merge(
         Layer.succeedContext(
-          Context.pick(Database.Service, PermissionSaved.Service, PluginUpdate.Service, Project.Service, WellKnown.Service)(
-            context,
-          ),
+          Context.pick(
+            Database.Service,
+            PermissionSaved.Service,
+            PluginUpdate.Service,
+            Project.Service,
+            WellKnown.Service,
+          )(context),
         ),
         ServerInfo.layer(serviceURLs, options.app),
       )

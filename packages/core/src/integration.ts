@@ -19,6 +19,7 @@ import {
 } from "effect"
 import { Integration } from "@opencode-ai/schema/integration"
 import { Credential } from "./credential.js"
+import { SharedConnection } from "./shared-connection.js"
 import { State } from "./state.js"
 import { Bus } from "./bus.js"
 import { IntegrationConnection } from "./integration/connection.js"
@@ -150,10 +151,10 @@ export interface Interface extends State.Transformable<Draft> {
   readonly list: () => Effect.Effect<Info[]>
   readonly connection: {
     /** Returns the active connection for one integration. */
-    readonly active: (id: ID) => Effect.Effect<IntegrationConnection.Info | undefined>
+    readonly active: (id: ID) => Effect.Effect<IntegrationConnection.ActiveInfo | undefined>
     /** Resolves a connection into usable credential material. */
     readonly resolve: (
-      connection: IntegrationConnection.Info,
+      connection: IntegrationConnection.ActiveInfo,
     ) => Effect.Effect<Credential.Value | undefined, AuthorizationError>
     /** Runs a key method and stores the resulting credential. */
     readonly key: (input: {
@@ -261,6 +262,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const credentials = yield* Credential.Service
+    const sharedConnections = yield* SharedConnection.Service
     const bus = yield* Bus.Service
     const processes = yield* AppProcess.Service
     const scope = yield* Scope.Scope
@@ -368,6 +370,36 @@ const layer = Layer.effect(
 
     const authorize = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.mapError((cause) => new AuthorizationError({ cause })))
+
+    const resolveValue = (input: {
+      integrationID: ID
+      value: Credential.Value
+      update: (value: Credential.Value) => Effect.Effect<void>
+    }) =>
+      Effect.gen(function* () {
+        if (input.value.type === "key") return input.value
+        const implementation = state
+          .get()
+          .integrations.get(input.integrationID)
+          ?.implementations.get(input.value.methodID)
+        if (!implementation?.refresh) return input.value
+        const now = yield* Clock.currentTimeMillis
+        if (input.value.expires > now + Duration.toMillis(Duration.minutes(5))) return input.value
+        const value = yield* authorize(implementation.refresh(input.value))
+        yield* input.update(value)
+        return value
+      })
+
+    const resolveShared = (integrationID: ID) =>
+      Effect.gen(function* () {
+        const shared = yield* sharedConnections.get(integrationID)
+        if (!shared) return undefined
+        return yield* resolveValue({
+          integrationID,
+          value: shared.value,
+          update: (value) => sharedConnections.update(integrationID, { value }),
+        })
+      })
 
     const close = (attemptScope: Scope.Closeable) =>
       Scope.close(attemptScope, Exit.void).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
@@ -666,26 +698,32 @@ const layer = Layer.effect(
       connection: {
         active: Effect.fn("Integration.connection.active")(function* (id) {
           const entry = state.get().integrations.get(id)
-          return resolveConnections(entry, yield* credentials.list(id))[0]
+          const personal = resolveConnections(entry, yield* credentials.list(id))[0]
+          if (personal) return personal
+          const shared = yield* sharedConnections.get(id)
+          return shared ? { type: "shared" as const, integrationID: id, label: shared.label } : undefined
         }),
         resolve: Effect.fn("Integration.connection.resolve")(function* (connection) {
           if (connection.type === "env") {
             const key = process.env[connection.name]
             return key ? Credential.Key.make({ type: "key", key }) : undefined
           }
+          if (connection.type === "shared") {
+            const shared = yield* sharedConnections.get(connection.integrationID)
+            if (!shared) return undefined
+            return yield* resolveValue({
+              integrationID: connection.integrationID,
+              value: shared.value,
+              update: (value) => sharedConnections.update(connection.integrationID, { value }),
+            })
+          }
           const credential = yield* credentials.get(connection.id)
           if (!credential) return undefined
-          if (credential.value.type === "key") return credential.value
-          const implementation = state
-            .get()
-            .integrations.get(credential.integrationID)
-            ?.implementations.get(credential.value.methodID)
-          if (!implementation?.refresh) return credential.value
-          const now = yield* Clock.currentTimeMillis
-          if (credential.value.expires > now + Duration.toMillis(Duration.minutes(5))) return credential.value
-          const value = yield* authorize(implementation.refresh(credential.value))
-          yield* credentials.update(credential.id, { value })
-          return value
+          return yield* resolveValue({
+            integrationID: credential.integrationID,
+            value: credential.value,
+            update: (value) => credentials.update(credential.id, { value }),
+          }).pipe(Effect.catchTag("Integration.Authorization", () => resolveShared(credential.integrationID)))
         }),
         key: Effect.fn("Integration.connection.key")(function* (input) {
           const method = state
@@ -800,5 +838,5 @@ const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Credential.node, Bus.node, AppProcess.node],
+  deps: [Credential.node, SharedConnection.node, Bus.node, AppProcess.node],
 })

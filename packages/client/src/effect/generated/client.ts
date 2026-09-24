@@ -248,6 +248,13 @@ import type {
   WorkspaceCreateOutput,
   WorkspaceDestroyInput,
   WorkspaceDestroyOutput,
+  SharedConnectionListOutput,
+  SharedConnectionCreateInput,
+  SharedConnectionCreateOutput,
+  SharedConnectionUpdateInput,
+  SharedConnectionUpdateOutput,
+  SharedConnectionRemoveInput,
+  SharedConnectionRemoveOutput,
   VcsGetInput,
   VcsGetOutput,
   VcsBaseInput,
@@ -1500,6 +1507,41 @@ const adaptGroupWorkspace = (raw: RawClient["server.workspace"]) => ({
   destroy: EndpointWorkspaceDestroy(raw),
 })
 
+const EndpointSharedConnectionList = (raw: RawClient["server.sharedConnection"]) => () =>
+  preserveEffect<SharedConnectionListOutput>()(raw["sharedConnection.list"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointSharedConnectionCreate =
+  (raw: RawClient["server.sharedConnection"]) => (input: SharedConnectionCreateInput) =>
+    preserveEffect<SharedConnectionCreateOutput>()(
+      raw["sharedConnection.create"]({
+        payload: { integrationID: input["integrationID"], label: input["label"], value: input["value"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointSharedConnectionUpdate =
+  (raw: RawClient["server.sharedConnection"]) => (input: SharedConnectionUpdateInput) =>
+    preserveEffect<SharedConnectionUpdateOutput>()(
+      raw["sharedConnection.update"]({
+        params: { integrationID: input["integrationID"] },
+        payload: { label: input["label"], value: input["value"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointSharedConnectionRemove =
+  (raw: RawClient["server.sharedConnection"]) => (input: SharedConnectionRemoveInput) =>
+    preserveEffect<SharedConnectionRemoveOutput>()(
+      raw["sharedConnection.remove"]({ params: { integrationID: input["integrationID"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const adaptGroupSharedConnection = (raw: RawClient["server.sharedConnection"]) => ({
+  list: EndpointSharedConnectionList(raw),
+  create: EndpointSharedConnectionCreate(raw),
+  update: EndpointSharedConnectionUpdate(raw),
+  remove: EndpointSharedConnectionRemove(raw),
+})
+
 const EndpointVcsGet = (raw: RawClient["server.vcs"]) => (input?: VcsGetInput) =>
   preserveEffect<VcsGetOutput>()(
     raw["vcs.get"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
@@ -1607,6 +1649,7 @@ const adaptClient = (raw: RawClient) => ({
   reference: adaptGroupReference(raw["server.reference"]),
   worktree: adaptGroupWorktree(raw["server.worktree"]),
   workspace: adaptGroupWorkspace(raw["server.workspace"]),
+  sharedConnection: adaptGroupSharedConnection(raw["server.sharedConnection"]),
   vcs: adaptGroupVcs(raw["server.vcs"]),
   debug: adaptGroupDebug(raw["server.debug"]),
   migration: adaptGroupMigration(raw["server.migration"]),

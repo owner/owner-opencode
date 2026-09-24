@@ -286,10 +286,16 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: Interface, p
       reload: integration.reload,
       connection: {
         active: (id) => integration.connection.active(Integration.ID.make(id)),
-        resolve: (connection) =>
-          integration.connection.resolve(
-            connection.type === "credential" ? { ...connection, id: Credential.ID.make(connection.id) } : connection,
-          ),
+        resolve: (connection) => {
+          if (connection.type === "credential")
+            return integration.connection.resolve({ ...connection, id: Credential.ID.make(connection.id) })
+          if (connection.type === "shared")
+            return integration.connection.resolve({
+              ...connection,
+              integrationID: Integration.ID.make(connection.integrationID),
+            })
+          return integration.connection.resolve(connection)
+        },
       },
       transform: (callback) =>
         integration.transform((draft) => {

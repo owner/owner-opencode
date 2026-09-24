@@ -1973,6 +1973,45 @@ export interface WorkspaceApi<E = never> {
   readonly destroy: WorkspaceDestroyOperation<E>
 }
 
+export type SharedConnectionListOutput = ReadonlyArray<{
+  readonly integrationID: Integration.ID
+  readonly label: string
+}>
+export type SharedConnectionListOperation<E = never> = () => Effect.Effect<SharedConnectionListOutput, E>
+
+export type SharedConnectionCreateInput = {
+  readonly integrationID: Integration.ID
+  readonly label?: string | undefined
+  readonly value: Credential.Value
+}
+export type SharedConnectionCreateOutput = { readonly integrationID: Integration.ID; readonly label: string }
+export type SharedConnectionCreateOperation<E = never> = (
+  input: SharedConnectionCreateInput,
+) => Effect.Effect<SharedConnectionCreateOutput, E>
+
+export type SharedConnectionUpdateInput = {
+  readonly integrationID: Integration.ID
+  readonly label?: string | undefined
+  readonly value?: Credential.Value | undefined
+}
+export type SharedConnectionUpdateOutput = void
+export type SharedConnectionUpdateOperation<E = never> = (
+  input: SharedConnectionUpdateInput,
+) => Effect.Effect<SharedConnectionUpdateOutput, E>
+
+export type SharedConnectionRemoveInput = { readonly integrationID: Integration.ID }
+export type SharedConnectionRemoveOutput = void
+export type SharedConnectionRemoveOperation<E = never> = (
+  input: SharedConnectionRemoveInput,
+) => Effect.Effect<SharedConnectionRemoveOutput, E>
+
+export interface SharedConnectionApi<E = never> {
+  readonly list: SharedConnectionListOperation<E>
+  readonly create: SharedConnectionCreateOperation<E>
+  readonly update: SharedConnectionUpdateOperation<E>
+  readonly remove: SharedConnectionRemoveOperation<E>
+}
+
 export type VcsGetInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
@@ -2110,6 +2149,7 @@ export interface AppApi<E = never> {
   readonly reference: ReferenceApi<E>
   readonly worktree: WorktreeApi<E>
   readonly workspace: WorkspaceApi<E>
+  readonly sharedConnection: SharedConnectionApi<E>
   readonly vcs: VcsApi<E>
   readonly debug: DebugApi<E>
   readonly migration: MigrationApi<E>

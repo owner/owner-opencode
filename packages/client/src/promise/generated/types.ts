@@ -424,6 +424,8 @@ export type WorktreeInfo = { directory: string }
 
 export type WorkspaceDestroyResult = { destroyed: boolean }
 
+export type SharedConnectionInfo = { integrationID: string; label: string }
+
 export type VcsBranch = { current?: string; default?: string }
 
 export type VcsBase = { name: string; ref: string; source: "reflog" | "default" }
@@ -6130,6 +6132,148 @@ export type WorkspaceCreateOutput = { data: string }["data"]
 export type WorkspaceDestroyInput = { readonly workspaceID: { readonly workspaceID: string }["workspaceID"] }
 
 export type WorkspaceDestroyOutput = WorkspaceDestroyResult
+
+export type SharedConnectionListOutput = Array<SharedConnectionInfo>
+
+export type SharedConnectionCreateInput = {
+  readonly integrationID: {
+    readonly integrationID: string
+    readonly label?: string | null
+    readonly value:
+      | {
+          readonly type: "oauth"
+          readonly methodID: string
+          readonly refresh: string
+          readonly access: string
+          readonly expires: number
+          readonly metadata?: { readonly [x: string]: JsonValue }
+        }
+      | {
+          readonly type: "key"
+          readonly key: string
+          readonly metadata?: { readonly [x: string]: JsonValue }
+          readonly configuration?: {
+            readonly [x: string]: string | number | "Infinity" | "-Infinity" | "NaN" | boolean | ReadonlyArray<string>
+          }
+        }
+  }["integrationID"]
+  readonly label?: {
+    readonly integrationID: string
+    readonly label?: string | null
+    readonly value:
+      | {
+          readonly type: "oauth"
+          readonly methodID: string
+          readonly refresh: string
+          readonly access: string
+          readonly expires: number
+          readonly metadata?: { readonly [x: string]: JsonValue }
+        }
+      | {
+          readonly type: "key"
+          readonly key: string
+          readonly metadata?: { readonly [x: string]: JsonValue }
+          readonly configuration?: {
+            readonly [x: string]: string | number | "Infinity" | "-Infinity" | "NaN" | boolean | ReadonlyArray<string>
+          }
+        }
+  }["label"]
+  readonly value: {
+    readonly integrationID: string
+    readonly label?: string | null
+    readonly value:
+      | {
+          readonly type: "oauth"
+          readonly methodID: string
+          readonly refresh: string
+          readonly access: string
+          readonly expires: number
+          readonly metadata?: { readonly [x: string]: JsonValue }
+        }
+      | {
+          readonly type: "key"
+          readonly key: string
+          readonly metadata?: { readonly [x: string]: JsonValue }
+          readonly configuration?: {
+            readonly [x: string]: string | number | "Infinity" | "-Infinity" | "NaN" | boolean | ReadonlyArray<string>
+          }
+        }
+  }["value"]
+}
+
+export type SharedConnectionCreateOutput = SharedConnectionInfo
+
+export type SharedConnectionUpdateInput = {
+  readonly integrationID: { readonly integrationID: string }["integrationID"]
+  readonly label?: {
+    readonly label?: string | null
+    readonly value?:
+      | (
+          | {
+              readonly type: "oauth"
+              readonly methodID: string
+              readonly refresh: string
+              readonly access: string
+              readonly expires: number
+              readonly metadata?: { readonly [x: string]: JsonValue }
+            }
+          | {
+              readonly type: "key"
+              readonly key: string
+              readonly metadata?: { readonly [x: string]: JsonValue }
+              readonly configuration?: {
+                readonly [x: string]:
+                  | string
+                  | number
+                  | "Infinity"
+                  | "-Infinity"
+                  | "NaN"
+                  | boolean
+                  | ReadonlyArray<string>
+              }
+            }
+        )
+      | null
+  }["label"]
+  readonly value?: {
+    readonly label?: string | null
+    readonly value?:
+      | (
+          | {
+              readonly type: "oauth"
+              readonly methodID: string
+              readonly refresh: string
+              readonly access: string
+              readonly expires: number
+              readonly metadata?: { readonly [x: string]: JsonValue }
+            }
+          | {
+              readonly type: "key"
+              readonly key: string
+              readonly metadata?: { readonly [x: string]: JsonValue }
+              readonly configuration?: {
+                readonly [x: string]:
+                  | string
+                  | number
+                  | "Infinity"
+                  | "-Infinity"
+                  | "NaN"
+                  | boolean
+                  | ReadonlyArray<string>
+              }
+            }
+        )
+      | null
+  }["value"]
+}
+
+export type SharedConnectionUpdateOutput = void
+
+export type SharedConnectionRemoveInput = {
+  readonly integrationID: { readonly integrationID: string }["integrationID"]
+}
+
+export type SharedConnectionRemoveOutput = void
 
 export type VcsGetInput = {
   readonly location?: {

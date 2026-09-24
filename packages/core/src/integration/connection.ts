@@ -10,3 +10,6 @@ export type EnvInfo = Connection.EnvInfo
 
 export const Info = Connection.Info
 export type Info = Connection.Info
+
+export const ActiveInfo = Connection.ActiveInfo
+export type ActiveInfo = Connection.ActiveInfo
