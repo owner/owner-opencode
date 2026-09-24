@@ -944,7 +944,11 @@ test("shows jump to latest after scrolling one line above the final message", as
     width: 80,
     height: 20,
     state: state.path,
-    config: { animations: false, keybinds: { "session.line.up": "f6", "session.line.down": "f7" } },
+    config: {
+      animations: false,
+      tabs: { enabled: false },
+      keybinds: { "session.line.up": "f6", "session.line.down": "f7" },
+    },
     args: { sessionID: "ses_jump_latest" },
     fetch: (url) => {
       if (url.pathname === "/api/session") return json({ data: [session], cursor: {} })
@@ -966,19 +970,25 @@ test("shows jump to latest after scrolling one line above the final message", as
   if (!scroll) throw new Error("session transcript scrollbox was not found")
   const maximum = () => Math.max(0, scroll.scrollHeight - scroll.viewport.height)
 
+  await setup.waitForVisualIdle()
+  await setup.waitFor(() => scroll.scrollTop === maximum())
   expect(scroll.scrollTop).toBe(maximum())
   const initial = setup.captureCharFrame().split("\n")
   expect(initial.find((line) => line.includes("Jump to latest"))).toBeUndefined()
   expect(initial[initial.findIndex((line) => line.includes("Final visible message")) + 1]).toContain("┃")
 
   setup.mockInput.pressKey("F6")
-  const clipped = (await setup.waitForFrame((frame) => frame.includes("Jump to latest"))).split("\n")
+  const clipped = (
+    await setup.waitForFrame((frame) => frame.includes("Jump to latest") && scroll.scrollTop === maximum() - 1)
+  ).split("\n")
   expect(scroll.scrollTop).toBe(maximum() - 1)
   expect(clipped.find((line) => line.includes("Jump to latest"))).toBeDefined()
   expect(clipped[clipped.findIndex((line) => line.includes("Final visible message")) + 1]).not.toContain("┃")
 
   setup.mockInput.pressKey("F7")
-  const restored = (await setup.waitForFrame((frame) => !frame.includes("Jump to latest"))).split("\n")
+  const restored = (
+    await setup.waitForFrame((frame) => !frame.includes("Jump to latest") && scroll.scrollTop === maximum())
+  ).split("\n")
   expect(scroll.scrollTop).toBe(maximum())
   expect(restored.find((line) => line.includes("Jump to latest"))).toBeUndefined()
   expect(restored[restored.findIndex((line) => line.includes("Final visible message")) + 1]).toContain("┃")
