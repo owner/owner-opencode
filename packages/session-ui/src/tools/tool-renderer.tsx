@@ -1538,7 +1538,9 @@ function ExecuteTool(props: ToolProps & { charon?: boolean }) {
       )}
     >
       <ConsoleOutput copy={code()} variant="shell">
-        <HighlightedCode text={code()} />
+        <Show when={props.charon} fallback={<span data-slot="bash-command">{code()}</span>}>
+          <HighlightedCode text={code()} />
+        </Show>
         <Show when={output()}>{(value) => <span data-slot="bash-result">{value()}</span>}</Show>
       </ConsoleOutput>
     </BasicTool>
