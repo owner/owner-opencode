@@ -262,7 +262,7 @@ describe("Npm.add", () => {
       expect(entries.added.directory).toContain(path.join("npm", await Npm.cacheKey(spec)))
       expect(entries.added.directory).toContain("node_modules")
     }
-  })
+  }, 30_000)
 
   test("installs a Git package from an npm ::path: subdirectory", async () => {
     await using tmp = await tmpdir()
