@@ -127,7 +127,7 @@ const defaultSettings: Settings = {
     showProjectIcon: false,
     showTerminal: false,
     reasoningMode: "compact",
-    shellToolPartsExpanded: false,
+    shellToolPartsExpanded: true,
     editToolPartsExpanded: false,
     showCustomAgents: false,
     mobileTitlebarPosition: "top",
