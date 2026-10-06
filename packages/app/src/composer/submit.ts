@@ -348,7 +348,29 @@ async function sendPrompt(session: ComposerSession, value: ComposerSubmission) {
       },
     },
   }
-  await session.data.session.prompt(admission).catch(() => session.data.session.prompt(admission))
+  await promptSkippingUnreadableMentions(session, admission, request.files).catch(() =>
+    promptSkippingUnreadableMentions(session, admission, request.files),
+  )
+}
+
+// Comment mentions are guessed from free text (e.g. `@owner/ui`), so drop any the
+// server can't read instead of failing the whole prompt.
+async function promptSkippingUnreadableMentions(
+  session: ComposerSession,
+  admission: Parameters<ComposerSession["data"]["session"]["prompt"]>[0],
+  files: { uri: string; inferred?: true }[],
+): Promise<unknown> {
+  return session.data.session.prompt(admission).catch((error: unknown) => {
+    const { message, data } = (error ?? {}) as { message?: unknown; data?: { message?: unknown } }
+    const text = `${message} ${data?.message}`
+    const unreadable = files.find((file) => file.inferred && text.includes(`Unable to read attachment: ${file.uri}`))
+    if (!unreadable) throw error
+    return promptSkippingUnreadableMentions(
+      session,
+      { ...admission, files: admission.files?.filter((file) => file.uri !== unreadable.uri) },
+      files.filter((file) => file !== unreadable),
+    )
+  })
 }
 
 async function buildSubmissionRequest(session: ComposerSession, value: ComposerSubmission) {
