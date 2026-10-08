@@ -19,6 +19,7 @@ import { TabsProvider } from "@/shell/tabs/tabs"
 import { WslServersProvider } from "@/servers/wsl/context"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
+import { EmbeddedProvider } from "@/runtime/embed"
 
 export { preloadRoute }
 
@@ -99,23 +100,26 @@ export function AppInterface(props: {
   canonicalLocalServer?: ServerConnection.Key
   servers?: Array<ServerConnection.Any>
   router?: Component<BaseRouterProps>
+  embedded?: boolean
 }) {
   // The visual layout lives in the router root so it remains mounted across
   // route changes. Draft and session routes override only their server-bound data
   // providers beneath it.
   const Root = (rootProps: ParentProps) => (
-    <TabsProvider>
-      <GlobalProvider>
-        <BodyTypography />
-        <CommandProvider>
-          <DesktopCommands />
-          <HighlightsProvider>
-            {props.children}
-            {rootProps.children}
-          </HighlightsProvider>
-        </CommandProvider>
-      </GlobalProvider>
-    </TabsProvider>
+    <EmbeddedProvider embedded={props.embedded}>
+      <TabsProvider>
+        <GlobalProvider>
+          <BodyTypography />
+          <CommandProvider>
+            <DesktopCommands />
+            <HighlightsProvider>
+              {props.children}
+              {rootProps.children}
+            </HighlightsProvider>
+          </CommandProvider>
+        </GlobalProvider>
+      </TabsProvider>
+    </EmbeddedProvider>
   )
 
   return (

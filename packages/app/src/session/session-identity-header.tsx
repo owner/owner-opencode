@@ -12,6 +12,7 @@ import { pathKey } from "@/workspaces/path-key"
 import { isWorkspaceDirectory } from "@/workspaces/paths"
 import { sessionHref } from "@/shell/routes/session"
 import { sessionTitle } from "./title"
+import { useEmbedded } from "@/runtime/embed"
 
 export function SessionTitleHeader(props: ParentProps) {
   return (
@@ -25,6 +26,7 @@ export function SessionTitleHeader(props: ParentProps) {
 }
 
 export function SessionIdentityHeader(props: { sessionID: string; session?: SessionInfo }) {
+  const embedded = useEmbedded()
   const server = useServer()
   const tabs = useTabs()
   const settings = useSettings()
@@ -78,6 +80,8 @@ export function SessionIdentityHeader(props: { sessionID: string; session?: Sess
     tabs.rememberSessionRoute(current, id, parent()?.parentID)
     navigate(sessionHref(server.key, id))
   }
+
+  if (embedded.embedded) return
 
   return (
     <Show when={title() || parentTitle() || showProjectIcon()}>

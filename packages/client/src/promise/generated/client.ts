@@ -296,7 +296,9 @@ export function make(options: ClientOptions) {
   const fetch = options.fetch ?? globalThis.fetch
 
   const prepare = (descriptor: RequestDescriptor, requestOptions?: RequestOptions) => {
-    const url = new URL(descriptor.path, options.baseUrl)
+    const baseUrl = new URL(options.baseUrl)
+    if (!baseUrl.pathname.endsWith("/")) baseUrl.pathname += "/"
+    const url = new URL(descriptor.path.replace(/^\//, ""), baseUrl)
     for (const [key, value] of Object.entries(descriptor.query ?? {})) appendQuery(url.searchParams, key, value)
     const headers = new Headers(options.headers)
     for (const [key, value] of Object.entries(descriptor.headers ?? {})) {
