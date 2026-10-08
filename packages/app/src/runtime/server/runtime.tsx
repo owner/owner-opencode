@@ -1,5 +1,5 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { Accessor, createEffect, createMemo, createResource, createRoot, getOwner } from "solid-js"
+import { Accessor, createEffect, createMemo, createResource, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createServerProjects, RECENTLY_CLOSED_DISPLAY_LIMIT, ServerConnection, useServers } from "./registry"
 import { pathKey } from "@/workspaces/path-key"
@@ -71,6 +71,14 @@ export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext(
           serverCtxs.delete(key)
         }
       }
+    })
+
+    // These roots outlive the provider unless disposed here. A leaked root keeps its event stream
+    // open and reconnecting, so repeated remounts exhaust the browser's per-origin connections.
+    onCleanup(() => {
+      for (const dispose of serverCtxDisposers.values()) dispose()
+      serverCtxDisposers.clear()
+      serverCtxs.clear()
     })
 
     return {
