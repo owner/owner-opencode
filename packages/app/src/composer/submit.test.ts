@@ -392,6 +392,41 @@ describe("Composer submission", () => {
     expect(state.current()).toMatchObject([{ type: "text", content: "retry me" }])
   })
 
+  test("drops unreadable comment @mentions instead of failing the prompt", async () => {
+    const state = createMemoryComposerState({ prompt: "review" }).capture()
+    state.context.add({ type: "file", path: "src/a.ts", comment: "see @src/b.ts, keep @owner/ui" })
+    const sent: string[][] = []
+    const admitted = Promise.withResolvers<void>()
+    const target = session({
+      calls: [],
+      prompt: async (value) => {
+        const uris = (value.files ?? []).map((file) => file.uri)
+        sent.push(uris)
+        const missing = uris.find((uri) => uri.endsWith("/owner/ui"))
+        if (missing) throw new Error(`Unable to read attachment: ${missing}`)
+        admitted.resolve()
+      },
+    })
+    let failed = false
+    const adapter: ActiveComposerAdapter = {
+      kind: "active-session",
+      state,
+      ready: () => true,
+      controls,
+      working: () => false,
+      session: () => target,
+      interrupt: async () => undefined,
+      submitted() {},
+      setEditor() {},
+    }
+
+    await submitInput(adapter, { missingSelection() {}, failed: () => (failed = true) }).submit(new Event("submit"))
+    await admitted.promise
+
+    expect(failed).toBe(false)
+    expect(sent.at(-1)).toEqual(["file:///C:/repo/src/a.ts", "file:///C:/repo/src/b.ts"])
+  })
+
   test("forwards structured mentions to custom commands", async () => {
     const state = createMemoryComposerState().capture()
     state.set([

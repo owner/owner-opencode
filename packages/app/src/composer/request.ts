@@ -8,7 +8,14 @@ import { formatCommentNote, type PromptComment } from "@/composer/comment-note"
 type PromptRequest = {
   text: string
   displayText: string
-  files: { uri: string; mime: string; name?: string; mention?: { start: number; end: number; text: string } }[]
+  files: {
+    uri: string
+    mime: string
+    name?: string
+    mention?: { start: number; end: number; text: string }
+    // Guessed from `@text` in a comment; may not exist on disk.
+    inferred?: true
+  }[]
   agents: { name: string; mention?: { start: number; end: number; text: string } }[]
   skills: { id: string; name: string; mention?: { start: number; end: number; text: string } }[]
   comments: PromptComment[]
@@ -101,7 +108,7 @@ export function buildPromptRequest(input: BuildPromptRequestInput): PromptReques
       const uri = `file://${encodeFilePath(absolute(input.sessionDirectory, path))}`
       if (used.has(uri)) return []
       used.add(uri)
-      return [{ uri, mime: "text/plain", name: getFilename(path) }]
+      return [{ uri, mime: "text/plain", name: getFilename(path), inferred: true as const }]
     })
     return [file, ...mentions]
   })
