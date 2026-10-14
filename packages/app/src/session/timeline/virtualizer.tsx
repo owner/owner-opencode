@@ -134,7 +134,6 @@ export function createTimelineVirtualizer(input: Input) {
   const measuredElements = new WeakSet<Element>()
   let touchStart: number | undefined
   let pointerHeld = false
-  let upwardIntent = false
   let maxScroll = 0
   let virtualContent: HTMLDivElement | undefined
   let scrollTop = 0
@@ -153,7 +152,9 @@ export function createTimelineVirtualizer(input: Input) {
         settleColdBottom()
       }
       return observeElementOffsetReconnectAware(instance, reportOffset, () => {
+        const root = listRoot()
         if (input.pinned()) virtualizer.scrollToEnd()
+        else if (root) root.scrollTop = Math.min(scrollTop, Math.max(0, root.scrollHeight - root.clientHeight))
         settleColdBottom()
       })
     },
@@ -378,7 +379,6 @@ export function createTimelineVirtualizer(input: Input) {
   const handleListWheel = (event: WheelEvent & { currentTarget: HTMLDivElement }) => {
     input.onUserScroll(event.target)
     if (event.deltaY < 0) {
-      upwardIntent = true
       input.onUnpin()
     }
   }
@@ -394,7 +394,6 @@ export function createTimelineVirtualizer(input: Input) {
     // Dragging the content downward reveals earlier messages.
     if (current <= touchStart) return
     touchStart = current
-    upwardIntent = true
     input.onUnpin()
   }
 
@@ -423,7 +422,6 @@ export function createTimelineVirtualizer(input: Input) {
     if (scrollKeyOwner(event.currentTarget, event.target, key) !== event.currentTarget) return
     input.onUserScroll(event.currentTarget)
     if (upwardKeys.has(key)) {
-      upwardIntent = true
       input.onUnpin()
     }
   }
@@ -441,38 +439,10 @@ export function createTimelineVirtualizer(input: Input) {
     const arrived = scrollTop > previousTop + endEpsilon || maxScroll < previousMaxScroll
     if (maxScroll <= 1 || (atEnd && arrived)) input.onPin()
     else if (pointerHeld && scrollTop < previousTop - endEpsilon) input.onUnpin()
-    upwardIntent = false
     settleColdBottom()
     input.onScheduleScrollState(root)
     input.onHistoryScroll()
   }
-
-  let offsetCheck: number | undefined
-  onMount(() => {
-    // A remounted scroll view can reset scrollTop without dispatching scroll. Restore
-    // the last observed position before TanStack paints rows for the wrong offset.
-    offsetCheck = window.setInterval(() => {
-      const root = listRoot()
-      if (!root?.isConnected || !reportOffset) return
-      const observed = virtualizer.scrollOffset ?? 0
-      if (Math.abs(root.scrollTop - observed) <= 1) return
-      if (pointerHeld && root.scrollTop < observed) input.onUnpin()
-      if (!pointerHeld && !upwardIntent && root.scrollTop < observed - 1 && scrollTop > 1) {
-        const end = root.scrollHeight - root.clientHeight
-        const target = maxScroll - scrollTop <= endEpsilon ? end : Math.min(scrollTop, end)
-        if (target > root.scrollTop + 1) root.scrollTop = target
-      }
-      reportOffset(root.scrollTop, false)
-      if (input.pinned()) virtualizer.scrollToEnd()
-      scrollTop = root.scrollTop
-      maxScroll = root.scrollHeight - root.clientHeight
-      input.onScheduleScrollState(root)
-      input.onHistoryScroll()
-    }, 100)
-  })
-  onCleanup(() => {
-    if (offsetCheck !== undefined) window.clearInterval(offsetCheck)
-  })
 
   function View(props: ViewProps) {
     function VirtualRow(rowProps: { rowKey: string }) {
