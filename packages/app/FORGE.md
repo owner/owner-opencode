@@ -77,8 +77,11 @@ inside the iframe. Do not alias stable packages back to the legacy vendored tree
 
 Stable already preserves path prefixes for generated HTTP calls, PTY sockets,
 and persistent PTY sockets. HTTP and socket routes append `/api/...` to the
-connection URL. The host proxy still needs to support both HTTP and WebSocket
-requests and streaming responses.
+connection URL. The app request queue classifies paths relative to the current
+server URL so prefixed SSE bypasses the queue, filesystem/git reads use the slow
+slots, and worktree creation keeps its ten-minute response-header budget. The
+host proxy still needs to support both HTTP and WebSocket requests and streaming
+responses.
 
 Before rollout, verify the parent wrapper against a v2.0.32 sandbox: session
 load and streaming, task switches/remounts, mobile scrolling, tool expansion,

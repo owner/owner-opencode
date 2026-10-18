@@ -35,6 +35,8 @@ function isSetupRequest(method: string, pathname: string) {
 
 export function createRequestQueue(input: {
   fetch: typeof globalThis.fetch
+  /** The current server URL, including a reverse proxy's path prefix. */
+  baseUrl?: () => string
   limit?: number
   slowLimit?: number
   stallMs?: number
@@ -119,7 +121,15 @@ export function createRequestQueue(input: {
   const fetch: typeof globalThis.fetch = Object.assign(
     async (resource: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(resource, init)
-      const pathname = new URL(request.url).pathname
+      const url = new URL(request.url)
+      const baseUrl = input.baseUrl?.()
+      const server = baseUrl ? new URL(baseUrl) : undefined
+      const prefix = server?.pathname.replace(/\/+$/, "") ?? ""
+
+      const pathname =
+        server?.origin === url.origin && prefix && url.pathname.startsWith(`${prefix}/`)
+          ? url.pathname.slice(prefix.length)
+          : url.pathname
 
       // The event stream is long-lived; never count it against the request budget.
       if (pathname === "/api/event") return base(request)
