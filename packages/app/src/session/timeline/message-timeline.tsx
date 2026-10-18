@@ -27,6 +27,7 @@ import { parseVoiceDelegation } from "./voice-delegation"
 import { useCommand } from "@/shell/commands/command"
 import { SessionAncestorTrail, SessionProjectMenu, SessionTitleHeader } from "../session-identity-header"
 import { SessionHeaderSpacer } from "@/session/header/session-header"
+import { useEmbedded } from "@/runtime/embed"
 import { SessionRunningMenu } from "@/session/header/session-running-menu"
 
 type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string }
@@ -123,6 +124,7 @@ function MessageTimelineView(
     pending: TimelineController["pending"]
   },
 ) {
+  const embedded = useEmbedded()
   const language = useLanguage()
   const server = useServer()
   const data = server.ctx.data
@@ -162,7 +164,11 @@ function MessageTimelineView(
     void data.location.vcs.sync({ directory }).catch(() => undefined)
   })
   const turnPadding = () => "px-4 md:px-6"
-  const showHeader = createMemo(() => !props.hideHeader && (props.data.showHeader() || workspaceSession()))
+
+  const showHeader = createMemo(
+    () => !embedded.embedded && !props.hideHeader && (props.data.showHeader() || workspaceSession()),
+  )
+
   const pinned = createMemo(() => props.pinned)
   const messageByID = projection.messageByID
 
@@ -461,7 +467,7 @@ function MessageTimelineView(
         </Show>
       )}
       header={
-        <Show when={!props.hideHeader}>
+        <Show when={!embedded.embedded && !props.hideHeader}>
           <SessionTitleHeader>
             <div class="h-12 w-full flex items-center justify-between gap-2">
               <div class="flex items-center gap-1 min-w-0 flex-1">

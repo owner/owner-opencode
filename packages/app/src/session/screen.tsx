@@ -38,6 +38,7 @@ import { SessionReviewToggle } from "./header/session-header-actions"
 import { SessionRunningMenu } from "./header/session-running-menu"
 import { createAnimatedPresence } from "@/runtime/animated-presence"
 import { createTimelineCache } from "./timeline/cache"
+import { useEmbedded } from "@/runtime/embed"
 
 export function SessionScreenView(props: { session: SessionModel }) {
   // The timeline cache captures its owner when created, so link handling must be provided above it.
@@ -66,6 +67,7 @@ function SessionScreenContent(props: {
   const host = useExtensionHost()
   const attachment = useExtensionAttachment()
   const settings = useSettings()
+  const embedded = useEmbedded()
   const isDesktop = session.isDesktop
   const bottomMobileTabs = () => settings.general.mobileTitlebarPosition() === "bottom"
   const sidebar = createPanelSidebar()
@@ -191,7 +193,7 @@ function SessionScreenContent(props: {
   const dockView = createMemo(() => mobile.entries().find((entry) => entry.provider.region === "dock"))
 
   const mobileView = createMemo(() =>
-    screen.dock.open() ? (dockView()?.key ?? "session") : attachment.mobile.current(),
+    embedded.embedded ? "session" : screen.dock.open() ? (dockView()?.key ?? "session") : attachment.mobile.current(),
   )
 
   const mobileEntry = createMemo(() => {
@@ -304,7 +306,9 @@ function SessionScreenContent(props: {
         input={composer.drop.input()}
         identity={session.layout.tabKey}
       />
-      <Show when={!isDesktop() && !!session.identity.params.id && !bottomMobileTabs()}>{mobileTabs()}</Show>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id && !bottomMobileTabs()}>
+        {mobileTabs()}
+      </Show>
       {/* Surface query errors without suspending session metadata while messages load. */}
       <Show when={timeline.resource.error}>
         {(error) => {
@@ -363,7 +367,9 @@ function SessionScreenContent(props: {
           <ActiveSessionComposerRegion session={session} model={model} suggestionBoundary={timeline.scroller} />
         )}
       </Show>
-      <Show when={!isDesktop() && !!session.identity.params.id && bottomMobileTabs()}>{mobileTabs()}</Show>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id && bottomMobileTabs()}>
+        {mobileTabs()}
+      </Show>
     </>
   )
 
@@ -372,7 +378,7 @@ function SessionScreenContent(props: {
       <div class="flex-1 min-h-0 flex flex-col gap-2 px-[var(--shell-inline-inset,8px)] pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]">
         <div ref={screen.panel.ref} class="relative flex-1 min-h-0 flex flex-col md:flex-row gap-2">
           {/* Keep the control outside panel animations. */}
-          <Show when={isDesktop() && messagesReady() && session.identity.params.id}>
+          <Show when={!embedded.embedded && isDesktop() && messagesReady() && session.identity.params.id}>
             <div
               class="absolute end-3 top-0 z-30 h-12 flex items-center"
               data-slot="session-review-toggle"
