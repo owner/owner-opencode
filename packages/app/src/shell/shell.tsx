@@ -11,11 +11,13 @@ import { useSettingsSurface } from "@/settings/surface"
 import { useSettings } from "@/settings/model"
 import { ExtensionServerCover } from "@/runtime/extension/server-shell"
 import { ExtensionSlot } from "@/runtime/extension/render"
+import { useEmbedded } from "@/runtime/embed"
 
 export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const settings = useSettingsSurface()
   const preferences = useSettings()
+  const embedded = useEmbedded()
   const mobile = createMediaQuery("(max-width: 767px)")
 
   const [state, setState] = createStore<{ tabsWidth: number; tabsMount: HTMLElement | undefined }>({
@@ -24,7 +26,9 @@ export default function Layout(props: ParentProps) {
   })
 
   const verticalTabs = () => preferences.appearance.tabLayout() === "vertical" && !mobile()
-  const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
+
+  const bottomTitlebar = () =>
+    !embedded.embedded && mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
 
   return (
     <TitlebarRightProvider>
@@ -35,19 +39,23 @@ export default function Layout(props: ParentProps) {
           "--shell-inline-inset": mobile() ? "1px" : "8px",
           // A bottom mobile titlebar leaves main's top edge to the safe area. Native Windows chrome supplies the gap;
           // retain outer-outline clearance.
-          "--shell-top-inset": bottomTitlebar()
-            ? "0px"
-            : platform.platform === "desktop" && platform.os === "windows"
-              ? "1px"
-              : "8px",
+          "--shell-top-inset": embedded.embedded
+            ? "8px"
+            : bottomTitlebar()
+              ? "0px"
+              : platform.platform === "desktop" && platform.os === "windows"
+                ? "1px"
+                : "8px",
           "--shell-bottom-inset": bottomTitlebar()
             ? "8px"
             : "max(0px, calc(8px - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))",
         }}
       >
-        <Titlebar verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined} />
+        <Show when={!embedded.embedded}>
+          <Titlebar verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined} />
+        </Show>
         <div class="flex flex-1 min-h-0 min-w-0 flex-row">
-          <Show when={verticalTabs()}>
+          <Show when={!embedded.embedded && verticalTabs()}>
             <aside
               ref={(element) => setState("tabsMount", element)}
               data-slot="vertical-tabs-sidebar"

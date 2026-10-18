@@ -17,6 +17,7 @@ import { useServer } from "@/runtime/server/current"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
+import { useEmbedded } from "@/runtime/embed"
 import { errorMessage } from "@/shell/layout/helpers"
 import { useLayout, type LocalProject } from "@/shell/state/layout"
 import { tabKey, useTabs } from "@/shell/tabs/tabs"
@@ -307,6 +308,7 @@ export function useOpenSessionRoute() {
 }
 
 export function SessionIdentityHeader(props: ParentProps<{ sessionID: string; session?: SessionInfo }>) {
+  const embedded = useEmbedded()
   const server = useServer()
   const tabs = useTabs()
   const language = useLanguage()
@@ -379,7 +381,7 @@ export function SessionIdentityHeader(props: ParentProps<{ sessionID: string; se
   const workspaceSession = createMemo(() => !!pending() || isWorkspaceDirectory(project(), directory() ?? ""))
 
   return (
-    <Show when={title() || parentTitle()}>
+    <Show when={!embedded.embedded && (title() || parentTitle())}>
       <SessionTitleHeader>
         <div class="flex h-12 w-full items-center justify-between gap-2">
           <div class="flex min-w-0 flex-1 items-center gap-1">

@@ -28,6 +28,7 @@ import { createMediaQuery } from "@solid-primitives/media"
 import type { createTimelineProjection } from "./projection"
 import { observeElementOffsetReconnectAware } from "./observe-element-offset"
 import { filterVirtualIndexes } from "./virtual-items"
+import { useEmbedded } from "@/runtime/embed"
 
 const fallbackItemSize = 60
 
@@ -92,9 +93,10 @@ type ViewProps = {
 
 export function createTimelineVirtualizer(input: Input) {
   const language = useLanguage()
+  const embedded = useEmbedded()
   const active = () => input.active?.() !== false
   const isDesktop = createMediaQuery("(min-width: 768px)")
-  const topOffset = () => (input.showHeader() ? 64 : isDesktop() ? 0 : 16)
+  const topOffset = () => (input.showHeader() ? 64 : embedded.embedded || !isDesktop() ? 16 : 0)
   const ownerSessionKey = input.sessionKey()
   const entry = cache.get(ownerSessionKey)
   const cached = entry?.presentationKey === input.presentationKey?.() ? entry : undefined
@@ -185,6 +187,7 @@ export function createTimelineVirtualizer(input: Input) {
   let touchScrolling = false
   let touchAdjustment = 0
   let pointerHeld = false
+  let upwardIntent = false
   let maxScroll = 0
   let virtualContent: HTMLDivElement | undefined
   let scrollTop = 0
@@ -232,6 +235,7 @@ export function createTimelineVirtualizer(input: Input) {
 
       return observeElementOffsetReconnectAware(instance, reportOffset, () => {
         if (!active()) return
+        recoverSilentOffset()
         virtualContent?.querySelectorAll<HTMLDivElement>("[data-index]").forEach(virtualizer.measureElement)
 
         if (input.pinned()) virtualizer.scrollToEnd()
@@ -636,15 +640,37 @@ export function createTimelineVirtualizer(input: Input) {
 
   const bindListRoot = (root: HTMLDivElement) => {
     if (root === listRoot()) return
-    // TanStack owns anchoring; browser scroll anchoring would fight its adjustments.
-    root.style.overflowAnchor = "none"
-    setListRoot(root)
-    scrollTop = root.scrollTop
-    maxScroll = root.scrollHeight - root.clientHeight
+    let adoptionObserver: ResizeObserver | undefined
+    let mounted = true
 
-    if (active()) input.setScrollRef(root)
-    viewportObserver?.observe(root)
-    settleColdBottom()
+    const bind = () => {
+      // Solid templates start in an inert document; TanStack needs the adopted node's window to attach observers.
+      if (!mounted || root === listRoot() || !root.ownerDocument.defaultView) return
+      adoptionObserver?.disconnect()
+      // TanStack owns anchoring; browser scroll anchoring would fight its adjustments.
+      root.style.overflowAnchor = "none"
+      setListRoot(root)
+      scrollTop = root.scrollTop
+      maxScroll = root.scrollHeight - root.clientHeight
+
+      if (active()) input.setScrollRef(root)
+      viewportObserver?.observe(root)
+      settleColdBottom()
+    }
+
+    if (root.ownerDocument.defaultView) {
+      bind()
+
+      return
+    }
+
+    adoptionObserver = new ResizeObserver(bind)
+    adoptionObserver.observe(root)
+    onCleanup(() => {
+      mounted = false
+      adoptionObserver?.disconnect()
+    })
+    queueMicrotask(bind)
   }
 
   // Upward input is the one intent geometry cannot recover: nudging up while still a pixel from
@@ -653,7 +679,10 @@ export function createTimelineVirtualizer(input: Input) {
     releaseAnchor()
     input.onUserScroll(event.target)
 
-    if (event.deltaY < 0) input.onUnpin()
+    if (event.deltaY < 0) {
+      upwardIntent = true
+      input.onUnpin()
+    }
   }
 
   const handleListTouchStart = (event: TouchEvent) => {
@@ -693,6 +722,7 @@ export function createTimelineVirtualizer(input: Input) {
     // A nested scrollport owns the intent. If it chains into the timeline at a
     // boundary, the resulting native timeline scroll below will unpin instead.
     if (touchNested) return
+    upwardIntent = true
     input.onUnpin()
   }
 
@@ -744,7 +774,10 @@ export function createTimelineVirtualizer(input: Input) {
     releaseAnchor()
     input.onUserScroll(event.currentTarget)
 
-    if (upwardKeys.has(key)) input.onUnpin()
+    if (upwardKeys.has(key)) {
+      upwardIntent = true
+      input.onUnpin()
+    }
   }
 
   // Following resumes by arriving at the end, either by scrolling there or by content shrinking
@@ -763,10 +796,54 @@ export function createTimelineVirtualizer(input: Input) {
     // An anchor holds its tool even when reaching it lands at the end; only the user's own scroll lets it go.
     if (maxScroll <= 1 || (atEnd && arrived && !rendering.anchor)) input.onPin()
     else if ((pointerHeld || touchScrolling) && scrollTop < previousTop - endEpsilon) input.onUnpin()
+    upwardIntent = false
     settleColdBottom()
     input.onScheduleScrollState(root)
     input.onHistoryScroll()
   }
+
+  function recoverSilentOffset() {
+    if (!embedded.embedded) return
+    const root = listRoot()
+
+    // Native touch scrolling owns its offset until momentum and the translated size compensation settle.
+    if (
+      !active() ||
+      !root?.isConnected ||
+      !root.clientHeight ||
+      !reportOffset ||
+      touchScrolling ||
+      rendering.scrollAdjustment
+    )
+      return
+    const observed = virtualizer.scrollOffset ?? 0
+
+    if (Math.abs(root.scrollTop - observed) <= 1) return
+
+    if (pointerHeld && root.scrollTop < observed) input.onUnpin()
+
+    if (!pointerHeld && !upwardIntent && root.scrollTop < observed - 1 && scrollTop > 1) {
+      const end = Math.max(0, root.scrollHeight - root.clientHeight)
+      const target = input.pinned() ? end : Math.min(scrollTop, end)
+
+      if (target > root.scrollTop + 1) root.scrollTop = target
+    }
+
+    reportOffset(root.scrollTop, false)
+
+    if (input.pinned()) virtualizer.scrollToEnd()
+    scrollTop = root.scrollTop
+    maxScroll = root.scrollHeight - root.clientHeight
+    input.onScheduleScrollState(root)
+    input.onHistoryScroll()
+  }
+
+  createEffect(() => {
+    if (!embedded.embedded) return
+    // Detached hosts can reset scrollTop without a scroll event or a route reconnect notification.
+    const offsetCheck = window.setInterval(recoverSilentOffset, 100)
+    onCleanup(() => window.clearInterval(offsetCheck))
+  })
 
   function View(props: ViewProps) {
     function VirtualRow(rowProps: { rowKey: string }) {
@@ -888,7 +965,10 @@ export function createTimelineVirtualizer(input: Input) {
           class="relative min-w-0 w-full h-full"
           style={{ "--sticky-accordion-top": input.showHeader() ? "48px" : "0px" }}
         >
-          <Show when={input.showHeader()} fallback={<div aria-hidden="true" class="h-4 md:hidden" />}>
+          <Show
+            when={input.showHeader()}
+            fallback={<div aria-hidden="true" class="h-4" classList={{ "md:hidden": !embedded.embedded }} />}
+          >
             {props.header}
           </Show>
           <div
