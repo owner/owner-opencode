@@ -1,11 +1,13 @@
+import { existsSync } from "fs"
+import path from "path"
 import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { registerOpencodeSpinner } from "./component/register-spinner"
 import { Effect, Latch } from "effect"
-import { Service, type Endpoint } from "@opencode-ai/client/effect/service"
-import { OpenCode, type SessionInfo } from "@opencode-ai/client"
-import { Global } from "@opencode-ai/util/global"
+import { Service, type Endpoint } from "@opencode/client/effect/service"
+import { OpenCode, type SessionInfo } from "@opencode/client"
+import { Global } from "@opencode/util/global"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
-import { LogProvider, useLog, type LogSink } from "./context/log"
+import { LogProvider, type LogSink } from "./context/log"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import { Selection } from "./util/selection"
@@ -37,6 +39,7 @@ import {
   TuiStartupProvider,
   TuiTerminalEnvironmentProvider,
   useTuiApp,
+  useTuiPaths,
   useTuiStartup,
   useTuiTerminalEnvironment,
   type TuiApp,
@@ -63,7 +66,9 @@ import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
 import { DialogConfig } from "./component/dialog-config"
 import { DialogDebug } from "./component/dialog-debug"
-import { DialogPair, type DialogPairCredentials } from "./component/dialog-pair"
+import { DialogPair } from "./component/dialog-pair"
+import { DialogHighlights } from "./component/dialog-highlights"
+import { claim } from "./util/highlights"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
@@ -73,6 +78,7 @@ import { SessionTabs } from "./component/session-tabs"
 import { clampSessionTabsWidth, sessionTabsFitVertically, SESSION_SIDEBAR_WIDTH } from "./ui/layout"
 import { createPaneResize } from "./ui/pane-resize"
 import { PaneResizeHandle } from "./ui/pane-resize-handle"
+import { clickedLink } from "./ui/link"
 import { ThemeErrorToast } from "./component/theme-error-toast"
 import { createThemeSource, ThemeProvider, useTheme, useThemes } from "./context/theme"
 import { Home } from "./routes/home"
@@ -80,14 +86,15 @@ import { PromptHistoryProvider } from "./prompt/history"
 import { FrecencyProvider } from "./prompt/frecency"
 import { PromptStashProvider } from "./prompt/stash"
 import { Toast, ToastProvider, useToast } from "./ui/toast"
-import { isFallbackTitle } from "@opencode-ai/util/session-title-fallback"
+import { isFallbackTitle } from "@opencode/util/session-title-fallback"
 import * as Model from "./util/model"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
-import open from "open"
+import { openUrl } from "@opencode/util/open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { Config, ConfigProvider, useConfig } from "./config"
 import { newSessionLocation } from "./config/new-session-location"
-import { PluginProvider, usePlugin, type PackageResolver } from "./plugin/context"
+import { UpdateNotificationProvider, useUpdateNotification, type UpdateSource } from "./context/update-notification"
+import { PluginProvider, usePlugin, type PackageSource } from "./plugin/context"
 import { localPluginDirectories } from "./plugin/discovery"
 import { PluginRoute, Slot } from "./plugin/render"
 import { CommandPaletteDialog } from "./component/command-palette"
@@ -99,6 +106,7 @@ import { cliErrorMessage, errorFormat } from "./util/error"
 import { AttentionProvider } from "./context/attention"
 import { StorageProvider, useStorage } from "./context/storage"
 import { SessionTerminalsProvider } from "./context/session-terminals"
+import { PanelProvider, usePanel } from "./context/panel"
 import { SessionFrame } from "./component/session-frame"
 import { createTuiClipboard } from "./clipboard"
 
@@ -153,8 +161,10 @@ const appBindingCommands = [
   "provider.connect",
   "opencode.settings",
   "opencode.status",
+  "opencode.update",
   "server.pair",
   "service.restart",
+  "location.reload",
   "opencode.debug",
   "theme.switch",
   "theme.switch_mode",
@@ -170,7 +180,6 @@ const appBindingCommands = [
   "app.toggle.file_context",
   "app.toggle.diffwrap",
   "app.toggle.paste_summary",
-  "permission.mode",
 ] as const
 
 export type TuiInput = {
@@ -184,7 +193,8 @@ export type TuiInput = {
   }
   args: Args
   config: Config.Interface
-  packages: PackageResolver
+  updater?: UpdateSource
+  packages: PackageSource
   environment?: Readonly<Record<string, string>>
   terminalHandoff?: () => Promise<
     | {
@@ -247,7 +257,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           )
         }
         if (process.env.OPENCODE_DRIVE) {
-          const { Drive } = yield* Effect.promise(() => import("@opencode-ai/simulation/frontend"))
+          const { Drive } = yield* Effect.promise(() => import("@opencode/simulation/frontend"))
           return yield* Drive.create(options, input.app.version)
         }
         return yield* Effect.acquireRelease(
@@ -258,6 +268,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           (renderer) => Effect.sync(() => destroyRenderer(renderer)),
         )
       })
+      renderer.setMaxListeners(15)
       const clipboard = yield* Effect.acquireRelease(
         Effect.sync(() => createTuiClipboard(renderer)),
         (clipboard) =>
@@ -282,8 +293,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       )
       renderer.once("destroy", () => shutdown.openUnsafe())
       yield* Effect.tryPromise(async () => {
-        // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
-        void renderer.getPalette({ size: 16 }).catch(() => undefined)
         const mode = handoff?.mode ?? (await renderer.waitForThemeMode(1000)) ?? "dark"
         if (renderer.isDestroyed) return
 
@@ -326,12 +335,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                             <TuiTerminalEnvironmentProvider
                               value={{
                                 platform: process.platform,
-                                multiplexer: process.env.TMUX ? "tmux" : process.env.STY ? "screen" : undefined,
-                                displayServer: process.env.WAYLAND_DISPLAY
-                                  ? "wayland"
-                                  : process.env.DISPLAY
-                                    ? "x11"
-                                    : undefined,
                                 variables: input.environment,
                               }}
                             >
@@ -392,21 +395,18 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                                     <PromptRefProvider>
                                                                       <EditorContextProvider>
                                                                         <AttentionProvider>
-                                                                          <PluginProvider
-                                                                            packages={input.packages}
-                                                                            directories={pluginDirectories}
+                                                                          <UpdateNotificationProvider
+                                                                            updater={input.updater}
                                                                           >
-                                                                            <App
-                                                                              pair={
-                                                                                input.server.endpoint.auth
-                                                                                  ? input.server.endpoint.auth
-                                                                                  : {
-                                                                                      username: "opencode",
-                                                                                      password: "",
-                                                                                    }
-                                                                              }
-                                                                            />
-                                                                          </PluginProvider>
+                                                                            <PanelProvider>
+                                                                              <PluginProvider
+                                                                                packages={input.packages}
+                                                                                directories={pluginDirectories}
+                                                                              >
+                                                                                <App />
+                                                                              </PluginProvider>
+                                                                            </PanelProvider>
+                                                                          </UpdateNotificationProvider>
                                                                         </AttentionProvider>
                                                                       </EditorContextProvider>
                                                                     </PromptRefProvider>
@@ -456,8 +456,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   })
 })
 
-function App(props: { pair?: DialogPairCredentials }) {
-  const log = useLog({ component: "app" })
+function App() {
   const app = useTuiApp()
   const startup = useTuiStartup()
   const config = useConfig()
@@ -468,12 +467,14 @@ function App(props: { pair?: DialogPairCredentials }) {
   const dialog = useDialog()
   const local = useLocal()
   const sessionTabs = useSessionTabs()
+  const panels = usePanel()
   const keymap = Keymap.use()
   const event = useEvent()
   const client = useClient()
   const toast = useToast()
+  const updater = useUpdateNotification()
   const theme = useTheme()
-  const { mode, supports, setMode, locked, lock, unlock } = useThemes()
+  const { mode, supports, setMode, locked, lock, unlock, afterPaint } = useThemes()
   const data = useData()
   const location = useLocation()
   const exit = useExit()
@@ -481,13 +482,23 @@ function App(props: { pair?: DialogPairCredentials }) {
   const plugins = usePlugin()
   const clipboard = useClipboard()
   const terminalEnvironment = useTuiTerminalEnvironment()
+  let paletteTimer: ReturnType<typeof setTimeout> | undefined
+  const afterFrame = () => {
+    // The native writer can still be flushing the frame when FRAME fires. Keep OSC probes behind visible app output.
+    paletteTimer = setTimeout(afterPaint, 50)
+  }
+  onMount(() => renderer.once(CliRenderEvents.FRAME, afterFrame))
+  onCleanup(() => {
+    renderer.off(CliRenderEvents.FRAME, afterFrame)
+    if (paletteTimer) clearTimeout(paletteTimer)
+  })
   createEffect(() => {
     if (client.connection.status() !== "connected") return
     if (route.data.type !== "session") return
     const session = data.session.get(route.data.sessionID)
     if (!session) return
     if (data.session.creating(session.id)) return
-    if (session.location.workspaceID !== undefined || terminalEnvironment.variables === undefined) return
+    if (terminalEnvironment.variables === undefined) return
     void client.api.session
       .environment({ sessionID: session.id, variables: terminalEnvironment.variables })
       .catch(toast.error)
@@ -567,9 +578,22 @@ function App(props: { pair?: DialogPairCredentials }) {
   const terminalTitleEnabled = () => config.data.terminal?.title ?? true
   const pasteSummaryEnabled = () => config.data.prompt?.paste !== "full"
   const tabsVertical = () =>
-    config.data.tabs.layout === "vertical" && sessionTabsFitVertically(dimensions().width, tabsResize.preferredSize())
-  const tabsVisible = () => sessionTabs.enabled() && sessionTabs.tabs().length > 0 && route.data.type !== "plugin"
+    config.data.tabs.layout === "vertical" && sessionTabsFitVertically(dimensions().width, tabsResize.size())
+  const tabsAvailable = () => sessionTabs.enabled() && sessionTabs.tabs().length > 0 && route.data.type !== "plugin"
+  const fullscreenPanel = () =>
+    route.data.type === "session" &&
+    panels.current()?.sessionID === route.data.sessionID &&
+    panels.presentation() === "fullscreen"
+  const tabsVisible = () => tabsAvailable() && !fullscreenPanel()
   const verticalTabsVisible = () => tabsVisible() && tabsVertical()
+
+  // Measure the prospective split layout, even while full-screen hides the tabs.
+  createEffect(() => panels.setWidth(dimensions().width - (tabsAvailable() && tabsVertical() ? tabsResize.size() : 0)))
+  createEffect(() => {
+    const current = panels.current()
+    if (!current || (route.data.type === "session" && route.data.sessionID === current.sessionID)) return
+    panels.close()
+  })
 
   createEffect(() => {
     renderer.useMouse = config.data.mouse
@@ -639,7 +663,6 @@ function App(props: { pair?: DialogPairCredentials }) {
         order: "desc",
         parentID: null,
         directory: location.directory,
-        workspace: location.workspaceID,
       })
       .then((response) => {
         const match = response.data[0]?.id
@@ -649,7 +672,7 @@ function App(props: { pair?: DialogPairCredentials }) {
           return
         }
         void client.api.session
-          .fork({ sessionID: match, boundary: { type: "through" } })
+          .fork({ sessionID: match })
           .then((result) => route.navigate({ type: "session", sessionID: result.id, prompt: startupPrompt }))
           .catch(toast.error)
       })
@@ -662,8 +685,32 @@ function App(props: { pair?: DialogPairCredentials }) {
     if (forked || !args.sessionID || !args.fork) return
     forked = true
     void client.api.session
-      .fork({ sessionID: args.sessionID, boundary: { type: "through" } })
+      .fork({ sessionID: args.sessionID })
       .then((result) => route.navigate({ type: "session", sessionID: result.id, prompt: startupPrompt }))
+      .catch(toast.error)
+  })
+
+  // Opens the release highlights once after an update, but only into an idle home screen during startup.
+  const storage = useStorage()
+  const paths = useTuiPaths()
+  let highlighted = false
+  createEffect(() => {
+    if (highlighted || !plugins.ready() || client.connection.status() !== "connected") return
+    highlighted = true
+    const items = app.highlights ?? []
+    if (config.data.highlights === false) return
+    if (route.data.type !== "home" || dialog.stack.length > 0 || promptRef.current?.current.text) return
+    if (args.prompt || args.continue || args.sessionID || args.newSessionID) return
+    if (process.env.OPENCODE_DRIVE || process.env.OPENCODE_STORY || process.env.OPENCODE_ROUTE) return
+    void claim(storage, {
+      version: app.version,
+      count: items.length,
+      history: existsSync(path.join(paths.state, "prompt-history.jsonl")),
+    })
+      .then((show) => {
+        if (show && dialog.stack.length === 0)
+          dialog.replace(() => <DialogHighlights version={app.version} items={items} />)
+      })
       .catch(toast.error)
   })
 
@@ -694,9 +741,10 @@ function App(props: { pair?: DialogPairCredentials }) {
         title: "New session",
         suggested: route.data.type === "session",
         category: "Session",
-        slash: { name: "new", aliases: ["clear"] },
+        slash: { name: "new" },
         run: () => {
           const model = local.model.current()
+          const agent = local.agent.current()
           const current =
             route.data.type === "session"
               ? (data.session.get(route.data.sessionID)?.location ?? location.ref)
@@ -710,6 +758,34 @@ function App(props: { pair?: DialogPairCredentials }) {
               location.error?.location,
             ),
           })
+          if (agent) local.agent.set(agent.id)
+          if (model) local.model.set(model)
+          dialog.clear()
+        },
+      },
+      {
+        name: "session.clear",
+        title: "Clear session",
+        category: "Session",
+        slash: { name: "clear" },
+        run: () => {
+          const model = local.model.current()
+          const agent = local.agent.current()
+          const current =
+            route.data.type === "session"
+              ? (data.session.get(route.data.sessionID)?.location ?? location.ref)
+              : undefined
+          sessionTabs.close()
+          route.navigate({
+            type: "home",
+            location: newSessionLocation(
+              config.data.session.new_location,
+              data.location.default().directory,
+              current,
+              location.error?.location,
+            ),
+          })
+          if (agent) local.agent.set(agent.id)
           if (model) local.model.set(model)
           dialog.clear()
         },
@@ -794,8 +870,7 @@ function App(props: { pair?: DialogPairCredentials }) {
         title: "Switch model",
         suggested: true,
         category: "Agent",
-        // Bias /mo toward /models over /move without changing global fuzzy scoring.
-        slash: { name: "models", aliases: ["mo"] },
+        slash: { name: "models" },
         run: () => {
           dialog.replace(() => <DialogModel />)
         },
@@ -876,7 +951,7 @@ function App(props: { pair?: DialogPairCredentials }) {
         title: "Switch model variant",
         category: "Agent",
         palette: local.model.variant.list().length === 0 ? undefined : (true as const),
-        slash: { name: "variants" },
+        slash: { name: "variants", aliases: ["thinking", "effort"] },
         run: () => {
           if (local.model.variant.list().length === 0) {
             return toast.show({
@@ -911,6 +986,17 @@ function App(props: { pair?: DialogPairCredentials }) {
         },
         category: "Integration",
       },
+      ...(app.highlights?.length
+        ? [
+            {
+              name: "opencode.highlights",
+              title: "Show release highlights",
+              slash: { name: "highlights" },
+              run: () => dialog.replace(() => <DialogHighlights version={app.version} items={app.highlights ?? []} />),
+              category: "System",
+            },
+          ]
+        : []),
       {
         name: "opencode.settings",
         title: "Open settings",
@@ -930,12 +1016,23 @@ function App(props: { pair?: DialogPairCredentials }) {
         },
         category: "System",
       },
+      ...(updater.open
+        ? [
+            {
+              name: "opencode.update",
+              title: "Update OpenCode",
+              slash: { name: "update" },
+              run: () => updater.open?.("manual"),
+              category: "System",
+            },
+          ]
+        : []),
       {
         name: "server.pair",
         title: "Pair device",
         slash: { name: "pair", aliases: ["web"] },
         run: () => {
-          dialog.replace(() => <DialogPair credentials={props.pair} />)
+          dialog.replace(() => <DialogPair />)
         },
         category: "System",
       },
@@ -960,6 +1057,22 @@ function App(props: { pair?: DialogPairCredentials }) {
             },
           ]
         : []),
+      {
+        name: "location.reload",
+        title: "Reload configuration",
+        slash: { name: "reload" },
+        run: async () => {
+          dialog.clear()
+          toast.show({ variant: "info", message: "Reloading configuration…", duration: 30000 })
+          await client.api.location
+            .reload()
+            .then(() => {
+              toast.show({ variant: "success", message: "Configuration reloaded" })
+            })
+            .catch(toast.error)
+        },
+        category: "System",
+      },
       {
         name: "opencode.debug",
         title: "View debug info",
@@ -1013,7 +1126,7 @@ function App(props: { pair?: DialogPairCredentials }) {
         name: "docs.open",
         title: "Open docs",
         run: () => {
-          open("https://opencode.ai/docs").catch(() => {})
+          openUrl("https://opencode.ai/docs").catch(() => {})
           dialog.clear()
         },
         category: "System",
@@ -1131,16 +1244,6 @@ function App(props: { pair?: DialogPairCredentials }) {
           dialog.clear()
         },
       },
-      {
-        name: "permission.mode",
-        title:
-          local.permission.mode === "auto" ? "Disable auto-approve permissions" : "Enable auto-approve permissions",
-        category: "System",
-        run: () => {
-          local.permission.toggle()
-          dialog.clear()
-        },
-      },
     ].map(
       ({ name, category, ...command }) =>
         ({
@@ -1188,13 +1291,13 @@ function App(props: { pair?: DialogPairCredentials }) {
     bindings: ["app.exit"],
   }))
 
-  event.on("tui.command.execute", (evt, { workspace }) => {
-    if (workspace !== (location.current?.workspaceID ?? data.location.default().workspaceID)) return
+  event.on("tui.command.execute", (evt, { directory }) => {
+    if (directory !== (location.current?.directory ?? data.location.default().directory)) return
     keymap.dispatch(evt.data.command)
   })
 
-  event.on("tui.toast.show", (evt, { workspace }) => {
-    if (workspace !== (location.current?.workspaceID ?? data.location.default().workspaceID)) return
+  event.on("tui.toast.show", (evt, { directory }) => {
+    if (directory !== (location.current?.directory ?? data.location.default().directory)) return
     toast.show({
       title: evt.data.title,
       message: evt.data.message,
@@ -1203,8 +1306,8 @@ function App(props: { pair?: DialogPairCredentials }) {
     })
   })
 
-  event.on("tui.session.select", (evt, { workspace }) => {
-    if (workspace !== (location.current?.workspaceID ?? data.location.default().workspaceID)) return
+  event.on("tui.session.select", (evt, { directory }) => {
+    if (directory !== (location.current?.directory ?? data.location.default().directory)) return
     route.navigate({
       type: "session",
       sessionID: evt.data.sessionID,
@@ -1260,7 +1363,7 @@ function App(props: { pair?: DialogPairCredentials }) {
       width={dimensions().width}
       height={dimensions().height}
       flexDirection="column"
-      backgroundColor={theme.background.default}
+      backgroundColor={theme.background.base}
       onMouseDown={(evt) => {
         if (copyOnSelectEnabled()) return
         if (evt.button !== MouseButton.RIGHT) return
@@ -1269,9 +1372,11 @@ function App(props: { pair?: DialogPairCredentials }) {
         evt.preventDefault()
         evt.stopPropagation()
       }}
-      onMouseUp={
-        copyOnSelectEnabled() ? (event) => Selection.copyOnSelectRelease(event, renderer, toast, clipboard) : undefined
-      }
+      onMouseUp={(event) => {
+        const url = clickedLink(renderer, event)
+        if (url) return void openUrl(url).catch(toast.error)
+        if (copyOnSelectEnabled()) Selection.copyOnSelectRelease(event, renderer, toast, clipboard)
+      }}
     >
       <box
         flexGrow={1}
@@ -1321,7 +1426,7 @@ function App(props: { pair?: DialogPairCredentials }) {
           <PaneResizeHandle resize={tabsResize} left={tabsResize.size() - 1} />
         </Show>
       </box>
-      <Show when={devtools()}>
+      <Show when={devtools() && !(route.data.type === "plugin" && route.data.id === "opencode.stats")}>
         <DevToolsBar />
       </Show>
       <Show when={!startup.skipInitialLoading}>

@@ -3,8 +3,7 @@ import { LLMEvent, type AIError, type ToolResultPart } from "../../schema/index.
 import { OpenResponses } from "../open-responses.js"
 import { Lifecycle } from "./lifecycle.js"
 
-export type Item = OpenResponses.StreamItem & {
-  readonly id: string
+export type Item = OpenResponses.OutputItem & {
   readonly status?: string
   readonly action?: unknown
   readonly queries?: unknown
@@ -27,14 +26,14 @@ export interface Definition {
 
 export type Definitions = Readonly<Record<string, Definition>>
 
-export const isItem = <Tools extends Definitions>(item: OpenResponses.StreamItem, tools: Tools): item is Item =>
-  item.type in tools && typeof item.id === "string" && item.id.length > 0
+export const isItem = <Tools extends Definitions>(item: OpenResponses.OutputItem, tools: Tools): item is Item =>
+  item.type in tools
 
 export const onDone: (
   state: OpenResponses.ParserState,
   item: Item,
   tools: Definitions,
-) => Effect.Effect<OpenResponses.StepResult, AIError> = Effect.fn("ResponsesHostedTools.onDone")(
+) => Effect.Effect<OpenResponses.StepResult, AIError> = Effect.fnUntraced(
   function* (state, item, tools) {
     const tool = tools[item.type]
     if (!tool) return [state, []] satisfies OpenResponses.StepResult

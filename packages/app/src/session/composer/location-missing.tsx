@@ -1,64 +1,69 @@
-import { Button } from "@opencode-ai/ui/button"
-import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { DockShell, DockTray } from "@opencode-ai/ui/dock-surface"
-import { Icon } from "@opencode-ai/ui/icon"
-import { Menu } from "@opencode-ai/ui/menu"
-import { getFilename } from "@opencode-ai/util/path"
-import { createMutation } from "@tanstack/solid-query"
+import { Button } from "@opencode/ui/button"
+import { useDialog } from "@opencode/ui/context/dialog"
+import { DockShell, DockTray } from "@opencode/ui/dock-surface"
+import { Icon } from "@opencode/ui/icon"
+import { Menu } from "@opencode/ui/menu"
+import { getFilename, sameDirectory } from "@opencode/util/path"
+import { useMutation } from "@tanstack/solid-query"
 import { createEffect, createResource, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
-import { useServerSDK } from "@/runtime/server/client"
-import { useData } from "@/runtime/server/current"
+import { useData, useServer } from "@/runtime/server/current"
 import { showToast } from "@/shell/notifications/toast"
-import { useDirectoryPicker } from "@/workspaces/selection/picker"
 import { createWorktree } from "@/workspaces/create"
+import { useDirectoryPicker } from "@/workspaces/selection/picker"
 
 export function SessionLocationMissing(props: { sessionID: string; projectID: string; directory: string }) {
   const language = useLanguage()
-  const sdk = useServerSDK()
+  const server = useServer()
   const data = useData()
   const dialog = useDialog()
   const pickDirectory = useDirectoryPicker()
   const [state, setState] = createStore({ restoreFocus: false, worktreesOpen: false })
   const project = () => data.project.get(props.projectID)
+
   const [worktrees] = createResource(
     () => (state.worktreesOpen ? props.projectID : undefined),
     async (projectID) => {
-      try {
-        await sdk.api.worktree.refresh({ projectID })
-        return await sdk.api.worktree.list({ projectID })
-      } catch {
-        showToast({ variant: "error", title: language.t("session.location.worktreesFailed") })
-        return []
-      }
+      await server.ctx.sync.worktrees.refresh(projectID)
+      const items = await server.ctx.sync.worktrees.list(projectID)
+
+      if (!items) showToast({ variant: "error", title: language.t("session.location.worktreesFailed") })
+
+      return items ?? []
     },
     // Seed latest so even the first fetch does not enter Suspense.
     { initialValue: [] },
   )
+
+  const otherWorktrees = () =>
+    worktrees.latest.filter((item) => item.strategy && !sameDirectory(item.directory, props.directory))
+
   let button: HTMLButtonElement | undefined
 
-  const move = createMutation(() => ({
-    mutationFn: async (input: { sessionID: string; directory?: string }) => {
-      // A deleted worktree cannot resolve its own location. Create from the
-      // project's saved canonical checkout instead.
+  const move = useMutation(() => ({
+    mutationFn: async (input: { directory?: string }) => {
+      // The missing worktree cannot resolve its own Location, so create from the project's saved checkout.
       const current = project()
+
       const destination =
         input.directory ??
         (current &&
           (await createWorktree({
-            api: sdk.api,
+            api: server.ctx.sdk.api,
+            data,
             directory: current.canonical,
             project: { id: current.id, canonical: current.canonical, directory: current.canonical },
           })))
+
       if (!destination) return
-      await sdk.api.session.move({ sessionID: input.sessionID, directory: destination })
+      await server.ctx.sdk.api.session.move({ sessionID: props.sessionID, directory: destination })
     },
     onError: (error) => {
       setState("restoreFocus", true)
       showToast({
         variant: "error",
-        title: language.t("workspace.move.failed"),
+        title: language.t("session.location.moveFailed"),
         description: error instanceof Error ? error.message : language.t("common.requestFailed"),
       })
     },
@@ -72,14 +77,15 @@ export function SessionLocationMissing(props: { sessionID: string; projectID: st
 
   function choose() {
     if (move.isPending) return
-    const sessionID = props.sessionID
     pickDirectory({
-      server: sdk.server,
+      server: server.conn,
       title: language.t("session.location.choose"),
       onSelect: (result) => {
-        const directory = Array.isArray(result) ? result[0] : result
-        if (directory) move.mutate({ sessionID, directory })
-        if (!directory) setState("restoreFocus", true)
+        const selected = Array.isArray(result) ? result[0] : result
+
+        if (selected) move.mutate({ directory: selected })
+
+        if (!selected) setState("restoreFocus", true)
       },
     })
   }
@@ -96,7 +102,7 @@ export function SessionLocationMissing(props: { sessionID: string; projectID: st
           </div>
         </div>
       </DockShell>
-      <DockTray class="flex flex-wrap justify-end gap-2 p-2">
+      <DockTray attach="top" class="flex flex-wrap justify-end gap-2 p-2 pt-[22px]">
         <Show when={project()?.vcs === "git"}>
           <Menu placement="top-end" onOpenChange={(open) => setState("worktreesOpen", open)}>
             <Menu.Trigger as={Button} variant="neutral" disabled={move.isPending}>
@@ -104,18 +110,18 @@ export function SessionLocationMissing(props: { sessionID: string; projectID: st
             </Menu.Trigger>
             <Menu.Portal>
               <Menu.Content class="max-h-80 max-w-[calc(100vw-32px)] overflow-y-auto">
-                <Menu.Item onSelect={() => move.mutate({ sessionID: props.sessionID })} disabled={move.isPending}>
+                <Menu.Item onSelect={() => move.mutate({})} disabled={move.isPending}>
                   <Icon name="workspace-new" />
                   {language.t("workspace.new")}
                 </Menu.Item>
-                <Show when={worktrees.loading}>
+                <Show when={worktrees.loading && otherWorktrees().length === 0}>
                   <Menu.Item disabled>{language.t("common.loading")}</Menu.Item>
                 </Show>
-                <For each={worktrees.latest.filter((item) => item.strategy && item.directory !== props.directory)}>
+                <For each={otherWorktrees()}>
                   {(worktree) => (
                     <Menu.Item
                       title={worktree.directory}
-                      onSelect={() => move.mutate({ sessionID: props.sessionID, directory: worktree.directory })}
+                      onSelect={() => move.mutate({ directory: worktree.directory })}
                       disabled={move.isPending}
                     >
                       <Icon name="workspace-isolated" />

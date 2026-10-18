@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
 import {
   Agent,
   Config,
@@ -16,9 +15,7 @@ import {
 } from "../src/index.js"
 import { EventManifest } from "../src/event-manifest.js"
 import { FileSystemV1 } from "../src/filesystem-v1.js"
-import { IdeEvent } from "../src/ide-event.js"
 import { McpEvent } from "../src/mcp-event.js"
-import { Plugin } from "../src/plugin.js"
 import { SessionEvent } from "../src/session-event.js"
 import { SessionID } from "../src/session-id.js"
 import { SessionMessage } from "../src/session-message.js"
@@ -38,17 +35,12 @@ describe("public event manifest", () => {
       Array.from(new Set(EventManifest.Definitions.map((definition) => definition.type))),
     )
     expect(EventManifest.Latest.get("agent.updated")).toBe(Agent.Event.Updated)
-    expect(EventManifest.Latest.get("plugin.updated")).toBe(Plugin.Event.Updated)
     expect(EventManifest.Server.get("mcp.status.changed")).toBe(McpEvent.StatusChanged)
     expect(EventManifest.Server.get("mcp.resources.changed")).toBe(McpEvent.ResourcesChanged)
     expect(EventManifest.Server.get("session.created")).toBe(SessionEvent.Created)
     expect(EventManifest.Server.get("session.deleted")).toBe(SessionEvent.Deleted)
     expect(EventManifest.Server.get("project.updated")).toBe(Project.Event.Updated)
     expect(EventManifest.Server.has("mcp.tools.changed")).toBe(false)
-    expect(EventManifest.Server.has("question.asked")).toBe(false)
-    expect(EventManifest.Server.has("question.replied")).toBe(false)
-    expect(EventManifest.Server.has("question.rejected")).toBe(false)
-    expect(EventManifest.Server.has("rpc.acme.updated")).toBe(false)
     expect(Agent.Event.Updated.durable).toBeUndefined()
     expect(EventManifest.Durable.has("agent.updated")).toBe(false)
   })
@@ -72,11 +64,8 @@ describe("public event manifest", () => {
     expect(PersistentPty.Event.Definitions).toEqual([PersistentPty.Event.Added, PersistentPty.Event.Removed])
     expect(Form.Event.Definitions).toEqual([Form.Event.Created, Form.Event.Replied, Form.Event.Cancelled])
     expect(Reference.Event.Definitions).toEqual([Reference.Event.Updated])
-    expect(Plugin.Event.Definitions).toEqual([Plugin.Event.Added, Plugin.Event.Updated])
     expect(McpEvent.Definitions).toEqual([McpEvent.ToolsChanged, McpEvent.ResourcesChanged, McpEvent.StatusChanged])
     expect(EventManifest.Latest.has("mcp.browser.open.failed")).toBe(false)
-    expect(EventManifest.Latest.has("ide.installed")).toBe(false)
-    expect(IdeEvent.Definitions).toEqual([IdeEvent.Installed])
     expect(EventManifest.Durable.get("session.step.ended.1")).toBe(SessionEvent.Step.Ended)
     expect(EventManifest.Durable.has("session.step.ended.2")).toBe(false)
   })
@@ -119,6 +108,8 @@ describe("public event manifest", () => {
         "session.model.selected.1",
         "session.moved.1",
         "session.renamed.1",
+        "session.metadata.updated.1",
+        "session.permissions.1",
         "session.viewed.1",
         "session.message.content.updated.1",
         "session.usage.recorded.1",
@@ -162,6 +153,7 @@ describe("public event manifest", () => {
     expect(SessionEvent.DurableDefinitions).toEqual([
       ...SessionEvent.Definitions.filter((definition) => definition.durability === "durable"),
       SessionEvent.UsageRecorded,
+      SessionEvent.MessageContentUpdated,
     ])
     expect(SessionEvent.UsageRecorded.durability).toBe("durable")
     expect(EventManifest.Durable.get("session.usage.recorded.1")).toBe(SessionEvent.UsageRecorded)

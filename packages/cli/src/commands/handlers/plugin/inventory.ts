@@ -1,10 +1,10 @@
 import { EOL } from "node:os"
 import { Cause, Effect, Exit } from "effect"
-import { OpenCode, type PluginInfo } from "@opencode-ai/client"
-import { Service } from "@opencode-ai/client/effect/service"
-import { Npm } from "@opencode-ai/util/npm"
+import { OpenCode } from "@opencode/client"
+import { Service } from "@opencode/client/effect/service"
+import { Npm } from "@opencode/util/npm"
 import { Config } from "../../../config"
-import { ServiceConfig } from "../../../services/service-config"
+import { ServerConnection } from "../../../services/server-connection"
 
 export interface Item {
   readonly runtime: "Server" | "TUI"
@@ -16,7 +16,7 @@ export interface Item {
 }
 
 export const inspect = Effect.fn("cli.plugin.inspect")(function* (selected?: string) {
-  const endpoint = yield* Service.ensure(yield* ServiceConfig.options())
+  const { endpoint } = yield* ServerConnection.resolve()
   const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
   const location = { directory: process.cwd() }
   const listed = yield* Effect.promise(() => client.plugin.list({ location }))
@@ -62,7 +62,7 @@ export const inspect = Effect.fn("cli.plugin.inspect")(function* (selected?: str
     tuiTargets,
     (target) =>
       Effect.gen(function* () {
-        const installed = yield* npm.resolve(target, { subpaths: ["tui"] })
+        const installed = yield* npm.resolve(target)
         const outdated = yield* npm.check(target).pipe(Effect.exit)
         return {
           runtime: "TUI" as const,

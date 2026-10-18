@@ -1,10 +1,13 @@
-import type { PluginInfo } from "@opencode-ai/client"
-import { Plugin } from "@opencode-ai/plugin/tui"
-import { createEffect, createMemo, createResource, createSignal, onMount, Show } from "solid-js"
+import type { PluginInfo } from "@opencode/client"
+import { Plugin } from "@opencode/plugin/tui"
+import path from "path"
+import { createEffect, createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { DialogErrorDetails } from "../../component/dialog-error-details"
+import { Spinner } from "../../component/spinner"
 import { usePlugin } from "../../plugin/context"
 import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import { useDialog } from "../../ui/dialog"
+import { errorMessage } from "../../util/error"
 
 const id = "opencode.plugins"
 
@@ -20,21 +23,24 @@ type Entry =
       readonly error?: string
     }
 
-export function PluginsDialog(props: {
-  context: Plugin.Context
-  plugins: ReturnType<typeof usePlugin>
-  server?: () => readonly PluginInfo[]
-}) {
+export function PluginsDialog(props: { context: Plugin.Context; plugins: ReturnType<typeof usePlugin> }) {
   const dialog = useDialog()
   const [locked, setLocked] = createSignal(false)
+  const [checking, setChecking] = createSignal(false)
   const [focused, setFocused] = createSignal<string>()
   const [detail, setDetail] = createSignal<Entry>()
   const [showInternal, setShowInternal] = createSignal(false)
-  const [server] = createResource(
-    () => (props.server ? undefined : (props.context.location ?? props.context.data.location.default())),
+  const [pending, setPending] = createSignal<readonly string[]>([])
+  const [server, { refetch, mutate }] = createResource(
+    () => props.context.location ?? props.context.data.location.default(),
     (location) => props.context.client.plugin.list({ location }).then((result) => result.data),
   )
-  onMount(() => dialog.setSize("medium"))
+  onMount(() => dialog.setSize("large"))
+  onCleanup(props.context.data.on("plugin.updated", () => void refetch()))
+  const updating = (entry: Entry) =>
+    pending().includes(entry.key) ||
+    (entry.runtime === "server" && entry.plugin.source.type === "package" && entry.plugin.source.updating === true)
+  const updatable = (entry: Entry | undefined) => entry !== undefined && outdated(entry) && !updating(entry)
   const entries = createMemo<Entry[]>(() => {
     const builtins: Entry[] = props.plugins
       .registered()
@@ -59,7 +65,7 @@ export function PluginsDialog(props: {
         status: plugin.status,
         error: plugin.status === "failed" ? plugin.error : undefined,
       }))
-    const serverEntries: Entry[] = (props.server?.() ?? server() ?? []).map((plugin) => ({
+    const serverEntries: Entry[] = (server() ?? []).map((plugin) => ({
       key: `server:${plugin.id ?? source(plugin, props.context)}`,
       runtime: "server" as const,
       internal: plugin.source.type === "builtin",
@@ -70,7 +76,9 @@ export function PluginsDialog(props: {
       ...serverEntries.sort((a, b) => label(a, props.context).localeCompare(label(b, props.context))),
     ]
   })
-  const visibleEntries = createMemo(() => entries().filter((entry) => showInternal() || !entry.internal))
+  const visibleEntries = createMemo(() =>
+    entries().filter((entry) => showInternal() || !entry.internal || status(entry) === "failed"),
+  )
   createEffect(() => {
     if (visibleEntries().some((entry) => entry.key === focused())) return
     const first = visibleEntries().find((entry) => entry.runtime === "tui") ?? visibleEntries()[0]
@@ -84,16 +92,17 @@ export function PluginsDialog(props: {
         value: entry.key,
         category: entry.runtime === "tui" ? "TUI" : "Server",
         searchText: entry.runtime === "tui" ? entry.target : source(entry.plugin, props.context),
-        footer: footer(entry),
+        footer: updating(entry) ? "updating" : footer(entry),
         footerColor:
           status(entry) === "failed"
-            ? props.context.theme.text.feedback.error.default
+            ? props.context.theme.text.feedback.error.base
             : outdated(entry)
-              ? props.context.theme.text.feedback.info.default
-              : props.context.theme.text.subdued,
-        gutter:
-          status(entry) === "failed"
-            ? () => <text fg={props.context.theme.text.feedback.error.default}>x</text>
+              ? props.context.theme.text.feedback.info.base
+              : props.context.theme.text.muted,
+        gutter: updating(entry)
+          ? (color) => <Spinner color={color} />
+          : status(entry) === "failed"
+            ? () => <text fg={props.context.theme.text.feedback.error.base}>x</text>
             : undefined,
       }),
     ),
@@ -122,10 +131,49 @@ export function PluginsDialog(props: {
       .catch((cause) => {
         props.context.ui.toast.show({
           variant: "error",
-          message: cause instanceof Error ? cause.message : String(cause),
+          message: errorMessage(cause),
         })
       })
       .finally(() => setLocked(false))
+  }
+  const update = (entry: Entry | undefined) => {
+    if (entry?.runtime !== "server" || entry.plugin.source.type !== "package" || !updatable(entry)) return
+    const location = props.context.location ?? props.context.data.location.default()
+    setPending((keys) => [...keys, entry.key])
+    props.context.client.plugin
+      .update({
+        location,
+        targets: [entry.plugin.source.target],
+      })
+      .then(() => refetch())
+      .catch((cause) => {
+        props.context.ui.toast.show({
+          variant: "error",
+          message: errorMessage(cause),
+        })
+      })
+      .finally(() => setPending((keys) => keys.filter((key) => key !== entry.key)))
+  }
+  // The server only re-checks package sources on startup and then caches the
+  // result for a day, so a merge pushed after launch stays invisible until the
+  // user asks. The check response carries fresh `outdated` flags for the whole
+  // inventory; apply it directly instead of waiting for a `plugin.updated`
+  // event, which only fires when a flag actually changes.
+  const check = () => {
+    if (checking()) return
+    setChecking(true)
+    props.context.client.plugin
+      .check({ location: props.context.location ?? props.context.data.location.default() })
+      .then((result) => {
+        mutate(result.data)
+      })
+      .catch((cause) => {
+        props.context.ui.toast.show({
+          variant: "error",
+          message: errorMessage(cause),
+        })
+      })
+      .finally(() => setChecking(false))
   }
 
   return (
@@ -148,7 +196,12 @@ export function PluginsDialog(props: {
                 },
               },
             ]}
-            footerHints={[{ title: "ctrl+a", label: `${showInternal() ? "hide" : "show"} internal` }]}
+            footerHints={[
+              ...(pluginError(focusedEntry()) && !focusedTui()
+                ? [{ title: "view error", label: "enter", group: "primary" as const }]
+                : []),
+              { title: `${showInternal() ? "hide" : "show"} internal`, label: "ctrl+a" },
+            ]}
             onMove={(option) => setFocused(option.value)}
             onSelect={(option) => {
               const entry = entries().find((entry) => entry.key === option.value)
@@ -160,38 +213,54 @@ export function PluginsDialog(props: {
                 return toggle(entry)
               if (pluginError(entry)) setDetail(entry)
             }}
-            actions={
-              focusedTui()
-                ? [
-                    {
-                      title: toggleTitle(),
-                      command: "plugins.toggle",
-                      onTrigger: (option) => toggle(entries().find((entry) => entry.key === option.value)),
-                    },
-                  ]
-                : []
-            }
-            footer={
-              <Show when={pluginError(focusedEntry())}>
-                <text>
-                  <span style={{ fg: props.context.theme.text.default }}>
-                    <b>enter</b>
-                  </span>
-                  <span style={{ fg: props.context.theme.text.subdued }}> view error</span>
-                </text>
-              </Show>
-            }
+            actions={[
+              {
+                title: checking() ? "checking for updates" : "check for updates",
+                command: "dialog.plugins.check",
+                selection: "none",
+                hidden: !entries().some(
+                  (entry) => entry.runtime === "server" && entry.plugin.source.type === "package",
+                ),
+                disabled: checking(),
+                onTrigger: check,
+              },
+              {
+                title: "view error",
+                command: "dialog.plugins.error",
+                hidden: !pluginError(focusedTui()),
+                onTrigger: (option) => {
+                  const entry = entries().find((entry) => entry.key === option.value)
+                  if (pluginError(entry)) setDetail(entry)
+                },
+              },
+              {
+                title: toggleTitle(),
+                command: "plugins.toggle",
+                side: "right",
+                hidden: !focusedTui(),
+                onTrigger: (option) => toggle(entries().find((entry) => entry.key === option.value)),
+              },
+              {
+                title: "update",
+                command: "dialog.plugins.update",
+                side: "right",
+                hidden: !updatable(focusedEntry()),
+                onTrigger: (option) => update(entries().find((entry) => entry.key === option.value)),
+              },
+            ]}
           />
         }
       >
         {(entry) => (
           <DialogErrorDetails
-            title={`${entry().runtime === "tui" ? "TUI" : "Server"} plugin: ${label(entry(), props.context)}`}
+            title={`${entry().runtime === "tui" ? "TUI" : "Server"} plugin error`}
+            source={pluginSource(entry(), props.context)}
             error={pluginError(entry()) ?? "Unknown plugin error"}
-            context={`Status: failed\nRuntime: ${entry().runtime}\nSource: ${pluginSource(entry(), props.context)}`}
+            diagnosticRef={pluginErrorRef(entry())}
+            context={`Plugin: ${label(entry(), props.context)}\nStatus: failed\nRuntime: ${entry().runtime}\nSource: ${pluginSource(entry(), props.context)}`}
             onBack={() => {
               setDetail()
-              dialog.setSize("medium")
+              dialog.setSize("large")
             }}
           />
         )}
@@ -216,6 +285,12 @@ function source(plugin: PluginInfo, context: Plugin.Context) {
   return plugin.source.type
 }
 
+function isLocal(entry: Entry) {
+  if (entry.runtime === "server") return entry.plugin.source.type === "local"
+  const target = entry.target
+  return target.startsWith("file://") || target.startsWith("./") || target.startsWith("../") || path.isAbsolute(target)
+}
+
 function status(entry: Entry) {
   if (entry.runtime === "server") return entry.plugin.state.status
   return entry.status
@@ -228,6 +303,7 @@ function outdated(entry: Entry) {
 function footer(entry: Entry) {
   const details = [
     ...(status(entry) === "active" ? [] : [status(entry)]),
+    ...(isLocal(entry) ? ["local"] : []),
     ...(entry.runtime === "server" && entry.plugin.source.type === "package" && entry.plugin.source.version
       ? [displayVersion(entry.plugin.source.version)]
       : []),
@@ -241,9 +317,12 @@ function displayVersion(version: string) {
 }
 
 function pluginError(entry: Entry | undefined) {
-  if (entry?.runtime === "server")
-    return entry.plugin.state.status === "failed" ? entry.plugin.state.error : undefined
+  if (entry?.runtime === "server") return entry.plugin.state.status === "failed" ? entry.plugin.state.error : undefined
   return entry?.error
+}
+
+function pluginErrorRef(entry: Entry) {
+  if (entry.runtime === "server" && entry.plugin.state.status === "failed") return entry.plugin.state.ref
 }
 
 function Commands(props: { context: Plugin.Context }) {
