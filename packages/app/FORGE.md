@@ -77,7 +77,9 @@ The stable app directly needs the local `@opencode/client`, `schema`,
 insufficient. v2.2.5 uses Effect
 4.0.6, Solid 1.9.17, Vite 8.2.4, and Tailwind 4.3.3 for the app. Keep the
 lockfile patches, especially Solid, TanStack virtual-core, and the stable
-Vite/worker configuration. `@opencode/app/vite` exports the app's Vite plugins
+Vite/worker configuration. `@opencode/client` pins its `effect` peer to the
+catalog version (4.0.6) because `catalog:` does not resolve when the package is
+linked outside this workspace. `@opencode/app/vite` exports the app's Vite plugins
 and configures its source alias, workers, Tailwind, and Solid compiler.
 
 Keep the stable entry's dependency resolution separate from legacy package
@@ -86,8 +88,11 @@ inside the iframe. Do not alias stable packages back to the legacy vendored tree
 
 Stable already preserves path prefixes for generated HTTP calls, PTY sockets,
 and persistent PTY sockets. HTTP and socket routes append `/api/...` to the
-connection URL. The host proxy still needs to support both HTTP and WebSocket
-requests and streaming responses.
+connection URL. The app request queue classifies paths relative to the current
+server URL so prefixed SSE bypasses the queue, filesystem/git reads use the slow
+slots, and worktree creation keeps its ten-minute response-header budget. The
+host proxy still needs to support both HTTP and WebSocket requests and streaming
+responses.
 
 Before rollout, verify the parent wrapper against a v2.2.5 sandbox: session
 load and streaming, task switches/remounts, mobile scrolling, tool expansion,
