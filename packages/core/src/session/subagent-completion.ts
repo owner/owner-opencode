@@ -3,6 +3,20 @@ export * as SubagentCompletion from "./subagent-completion.js"
 import { Effect } from "effect"
 import type { Job } from "../job.js"
 import type { Session } from "../session.js"
+import type { SessionMessage } from "./message.js"
+
+export const NO_TEXT = "Subagent completed without a text response."
+
+export function text(message: SessionMessage.Info | undefined) {
+  if (message?.type !== "assistant") return NO_TEXT
+  return (
+    message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .filter((text) => text.length > 0)
+      .join("\n\n") || NO_TEXT
+  )
+}
 
 export const deliver = Effect.fnUntraced(function* (
   sessions: Pick<Session.Interface, "synthetic">,
@@ -16,7 +30,7 @@ export const deliver = Effect.fnUntraced(function* (
   const recovery = input.recovery
   const text =
     input.status === "completed"
-      ? (input.output ?? "Subagent completed without a text response.")
+      ? (input.output ?? NO_TEXT)
       : input.status === "error"
         ? (input.error ?? "Subagent failed")
         : "Subagent cancelled"

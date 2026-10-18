@@ -1,9 +1,9 @@
 export * as WebFetchTool from "./webfetch.js"
 
-import type { Context } from "@opencode-ai/plugin/effect/plugin"
-import { ToolFailure } from "@opencode-ai/ai"
+import type { Context } from "@opencode/plugin/effect/plugin"
+import { ToolFailure } from "@opencode/ai"
 import { Duration, Effect, Schema } from "effect"
-import { HttpClient, type HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+import { HttpClient, type HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http"
 import { Parser } from "htmlparser2"
 import { Permission } from "../../permission.js"
 import { convertHTMLToMarkdown, MAX_MARKDOWN_BYTES } from "../html-markdown.js"
@@ -107,8 +107,8 @@ export const Plugin = {
     const permission = yield* Permission.Service
 
     yield* ctx.tool
-      .transform((draft) =>
-        draft.add({
+      .transform((editor) =>
+        editor.add({
           name,
           options: { codemode: false },
           description,

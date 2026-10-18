@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { HttpServer } from "effect/unstable/http"
+import { HttpServer } from "effect/http"
 import { ServerProcess } from "../../src/process"
 
 export const startServer = Effect.fnUntraced(function* (directory: string) {
@@ -11,6 +11,7 @@ export const startServer = Effect.fnUntraced(function* (directory: string) {
     database: { path: ":memory:" },
     config: { directory },
     fs: { filewatcher: false },
+    models: { fetch: false },
   })
   return {
     base: HttpServer.formatAddress(server.address),

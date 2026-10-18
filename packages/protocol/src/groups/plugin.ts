@@ -1,7 +1,7 @@
-import { Location } from "@opencode-ai/schema/location"
-import { Plugin } from "@opencode-ai/schema/plugin"
+import { Location } from "@opencode/schema/location"
+import { Plugin } from "@opencode/schema/plugin"
 import { Schema } from "effect"
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api"
 import { InvalidRequestError, ServiceUnavailableError } from "../errors.js"
 import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
@@ -14,7 +14,7 @@ export const PluginGroup = HttpApiGroup.make("server.plugin")
       .annotateMerge(locationQueryOpenApi)
       .annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.plugin.list",
+          identifier: "plugin.list",
           summary: "List plugins",
           description: "Retrieve enabled server plugins and their current status.",
         }),
@@ -30,7 +30,7 @@ export const PluginGroup = HttpApiGroup.make("server.plugin")
       .annotateMerge(locationQueryOpenApi)
       .annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.plugin.check",
+          identifier: "plugin.check",
           summary: "Check plugin updates",
           description: "Check one or all package plugins for available updates.",
         }),
@@ -39,16 +39,17 @@ export const PluginGroup = HttpApiGroup.make("server.plugin")
   .add(
     HttpApiEndpoint.post("plugin.update", "/api/plugin/update", {
       query: LocationQuery,
-      payload: Schema.Struct({ target: Schema.String }),
+      payload: Schema.Struct({ targets: Schema.Array(Schema.String) }),
       success: HttpApiSchema.NoContent,
       error: [InvalidRequestError, ServiceUnavailableError],
     })
       .annotateMerge(locationQueryOpenApi)
       .annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.plugin.update",
-          summary: "Update plugin",
-          description: "Update one package plugin and notify active locations to reload it.",
+          identifier: "plugin.update",
+          summary: "Update plugins",
+          description:
+            "Update package plugins concurrently and notify active locations to reload them. Responds once every update has finished; fails when any update fails.",
         }),
       ),
   )

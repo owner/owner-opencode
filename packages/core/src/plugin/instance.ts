@@ -1,8 +1,8 @@
 export * as InstancePlugins from "./instance.js"
 
-import type { Plugin } from "@opencode-ai/plugin/effect/plugin"
+import type { Plugin } from "@opencode/plugin/effect/plugin"
 import { Context, Layer } from "effect"
-import { makeLocationNode } from "@opencode-ai/util/effect/app-node"
+import { makeLocationNode } from "@opencode/util/effect/app-node"
 import type { Generation } from "../plugin.js"
 
 /**
@@ -40,8 +40,6 @@ export function bound(plugins: List) {
   if (duplicates.length > 0) {
     throw new Error(`duplicate instance plugin ids: ${duplicates.map((plugin) => plugin.id).join(", ")}`)
   }
-  const stamped = plugins.map(
-    (plugin): Generation => ({ ...plugin, revision: "instance", source: { type: "sdk" } }),
-  )
+  const stamped = plugins.map((plugin): Generation => ({ ...plugin, revision: "instance", source: { type: "sdk" } }))
   return Layer.succeed(Service, Service.of({ all: () => stamped }))
 }
