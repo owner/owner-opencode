@@ -951,6 +951,7 @@ export function createTimelineVirtualizer(input: Input) {
   }
 
   function recoverSilentOffset() {
+    if (!embedded.embedded) return
     const root = listRoot()
 
     // Native touch scrolling owns its offset until momentum and the translated size compensation settle.
@@ -985,7 +986,8 @@ export function createTimelineVirtualizer(input: Input) {
     input.onHistoryScroll()
   }
 
-  onMount(() => {
+  createEffect(() => {
+    if (!embedded.embedded) return
     // Detached hosts can reset scrollTop without a scroll event or a route reconnect notification.
     const offsetCheck = window.setInterval(recoverSilentOffset, 100)
     onCleanup(() => window.clearInterval(offsetCheck))
