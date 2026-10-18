@@ -26,6 +26,7 @@ import {
 import { createPanelMotion, guardClosingFocus, panelOpacity } from "@/shell/panel-motion"
 import { createSidebarPeek } from "@/shell/sidebar-peek"
 import { windowDragEnabled } from "@/session/header/drag-area"
+import { useEmbedded } from "@/runtime/embed"
 
 // How far Home steps along a peek's header to clear the collapsed toggle: to the toggle's end, from the sidebar's 18px
 // start padding.
@@ -45,6 +46,7 @@ export default function Layout(props: ParentProps) {
   const global = useGlobal()
   const servers = useServers()
   const tabs = useTabs()
+  const embedded = useEmbedded()
   const mobile = createMediaQuery("(max-width: 767px)")
 
   const [state, setState] = createStore<{
@@ -59,7 +61,7 @@ export default function Layout(props: ParentProps) {
     tabsPanel: undefined,
   })
 
-  const verticalTabs = () => preferences.appearance.tabLayout() !== "horizontal" && !mobile()
+  const verticalTabs = () => !embedded.embedded && preferences.appearance.tabLayout() !== "horizontal" && !mobile()
 
   const toggleSidebar = () => preferences.appearance.setSidebarOpen(!preferences.appearance.sidebarOpen())
 
@@ -200,7 +202,8 @@ export default function Layout(props: ParentProps) {
       },
     },
   ])
-  const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
+  const bottomTitlebar = () =>
+    !embedded.embedded && mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
   const dragInset = () => windowDragEnabled(platform) && !mobile()
 
   return (
@@ -211,17 +214,21 @@ export default function Layout(props: ParentProps) {
         "--shell-inline-inset": mobile() ? "1px" : "8px",
         // A bottom mobile titlebar leaves main's top edge to the safe area. Native Windows chrome supplies the gap;
         // retain outer-outline clearance.
-        "--shell-top-inset": bottomTitlebar()
-          ? "0px"
-          : platform.platform === "desktop" && platform.os === "windows"
-            ? "1px"
-            : "8px",
+        "--shell-top-inset": embedded.embedded
+          ? "8px"
+          : bottomTitlebar()
+            ? "0px"
+            : platform.platform === "desktop" && platform.os === "windows"
+              ? "1px"
+              : "8px",
         "--shell-bottom-inset": bottomTitlebar()
           ? "8px"
           : "max(0px, calc(8px - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))",
       }}
     >
-      <Titlebar verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined} />
+      <Show when={!embedded.embedded}>
+        <Titlebar verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined} />
+      </Show>
       <div class="relative flex flex-1 min-h-0 min-w-0 flex-row">
         {/* The empty inset above the panels moves the window, as the titlebar does. */}
         <Show when={dragInset()}>

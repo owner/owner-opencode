@@ -9,6 +9,7 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useSettings } from "@/settings/model"
 import { sidebarUnread } from "@/shell/sidebar-peek"
+import { useEmbedded } from "@/runtime/embed"
 
 // The toggle's dot for sidebar sessions with unread activity, shown while the sidebar is closed.
 function UnreadBadge(props: { show: boolean; ring: "base" | "deep" }) {
@@ -145,12 +146,13 @@ export function SidebarToggle(props: { handoff?: "out" | "in" }) {
 function useCollapsedSlot() {
   const platform = usePlatform()
   const settings = useSettings()
+  const embedded = useEmbedded()
   const desktop = createMediaQuery("(min-width: 768px)")
   const windows = () => platform.platform === "desktop" && platform.os === "windows"
   const mac = () => platform.platform === "desktop" && platform.os === "macos" && !platform.windowFullscreen?.()
 
   return {
-    visible: () => desktop() && !windows() && settings.appearance.tabLayout() !== "horizontal",
+    visible: () => !embedded.embedded && desktop() && !windows() && settings.appearance.tabLayout() !== "horizontal",
     open: settings.appearance.sidebarOpen,
     // Lays the toggle out as if the traffic lights were the header's first control.
     width: () =>

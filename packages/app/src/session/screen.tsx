@@ -49,6 +49,7 @@ import { useServer } from "@/runtime/server/current"
 import { reviewGlyphFill, SessionReviewToggle } from "./header/session-header-actions"
 import { createTimelineCache } from "./timeline/cache"
 import { createPanelMotion, holdLandingWidth, panelOpacity } from "@/shell/panel-motion"
+import { useEmbedded } from "@/runtime/embed"
 
 export function SessionScreenView(props: { session: SessionModel }) {
   // Link handling for the rest of the screen; each cached timeline provides its own for its session.
@@ -80,6 +81,7 @@ function SessionScreenContent(props: {
   const attachment = usePluginAttachment()
   const settings = useSettings()
   const server = useServer()
+  const embedded = useEmbedded()
   const isDesktop = session.isDesktop
   const bottomMobileTabs = () => settings.general.mobileTitlebarPosition() === "bottom"
   const sidebar = createPanelSidebar()
@@ -212,7 +214,7 @@ function SessionScreenContent(props: {
     if (screen.side.open()) setStore("sideMounted", true)
   })
 
-  const mobileView = attachment.mobile.current
+  const mobileView = () => (embedded.embedded ? "session" : attachment.mobile.current())
 
   const mobileEntry = createMemo(() => {
     const key = mobileView()
@@ -361,9 +363,11 @@ function SessionScreenContent(props: {
         identity={session.layout.tabKey}
       />
       <TimelineQuote controller={quote} />
-      <Show when={!isDesktop() && !!session.identity.params.id && !bottomMobileTabs()}>{mobileTabs()}</Show>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id && !bottomMobileTabs()}>
+        {mobileTabs()}
+      </Show>
       {/* Narrow screens hide the timeline header, so the session's location gets its own bar. */}
-      <Show when={!isDesktop() && !!session.identity.params.id && mobileView() === "session"}>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id && mobileView() === "session"}>
         <div
           data-slot="session-location-bar"
           class="flex h-9 shrink-0 items-center border-b border-v2-border-border-base px-2"
@@ -450,7 +454,9 @@ function SessionScreenContent(props: {
           )}
         </Show>
       </div>
-      <Show when={!isDesktop() && !!session.identity.params.id && bottomMobileTabs()}>{mobileTabs()}</Show>
+      <Show when={!embedded.embedded && !isDesktop() && !!session.identity.params.id && bottomMobileTabs()}>
+        {mobileTabs()}
+      </Show>
     </>
   )
 
@@ -459,7 +465,7 @@ function SessionScreenContent(props: {
       <div class="flex-1 min-h-0 flex flex-col gap-2 px-[var(--shell-inline-inset,8px)] pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]">
         <div ref={screen.panel.ref} data-pane-row class="relative flex-1 min-h-0 flex flex-col md:flex-row gap-2">
           {/* Keep the control outside panel animations. */}
-          <Show when={isDesktop() && messagesReady() && session.identity.params.id}>
+          <Show when={!embedded.embedded && isDesktop() && messagesReady() && session.identity.params.id}>
             <div
               class="absolute end-3 top-0 z-30 h-12 flex items-center"
               data-slot="session-review-toggle"

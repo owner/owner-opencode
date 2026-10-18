@@ -30,6 +30,7 @@ import { ServerLabel } from "@/servers/registry/label"
 import { fileManagerApp } from "@/home/projects/file-manager"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
+import { useEmbedded } from "@/runtime/embed"
 import { errorMessage } from "@/shell/layout/helpers"
 import { useLayout, type LocalProject } from "@/shell/state/layout"
 import { tabKey, useTabs } from "@/shell/tabs/tabs"
@@ -540,6 +541,7 @@ export function useOpenSessionRoute() {
 }
 
 export function SessionIdentityHeader(props: { sessionID: string; session?: SessionInfo }) {
+  const embedded = useEmbedded()
   const server = useServer()
   const tabs = useTabs()
   const language = useLanguage()
@@ -610,7 +612,7 @@ export function SessionIdentityHeader(props: { sessionID: string; session?: Sess
   })
 
   return (
-    <Show when={title() || parentTitle()}>
+    <Show when={!embedded.embedded && (title() || parentTitle())}>
       <SessionTitleHeader>
         <SessionHeaderLayout
           title={title()}

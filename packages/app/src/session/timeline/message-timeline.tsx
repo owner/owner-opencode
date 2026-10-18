@@ -38,6 +38,7 @@ import {
 import { SessionHeaderSpacer } from "@/session/header/session-header"
 import { SessionHeaderGap } from "@/session/header/drag-area"
 import { SessionWorkingIndicator } from "@/session/header/session-working-indicator"
+import { useEmbedded } from "@/runtime/embed"
 
 type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string }
 
@@ -134,6 +135,7 @@ function MessageTimelineView(
     pending: TimelineController["pending"]
   },
 ) {
+  const embedded = useEmbedded()
   const language = useLanguage()
   const command = useCommand()
   const pluginScoped = usePluginScoped()
@@ -179,7 +181,11 @@ function MessageTimelineView(
     },
   )
   const turnPadding = () => "px-4 md:px-6"
-  const showHeader = createMemo(() => !props.hideHeader && (props.data.showHeader() || workspaceSession()))
+
+  const showHeader = createMemo(
+    () => !embedded.embedded && !props.hideHeader && (props.data.showHeader() || workspaceSession()),
+  )
+
   const pinned = createMemo(() => props.pinned)
   const messageByID = projection.messageByID
 
@@ -516,7 +522,7 @@ function MessageTimelineView(
         </Show>
       )}
       header={
-        <Show when={!props.hideHeader}>
+        <Show when={!embedded.embedded && !props.hideHeader}>
           <SessionTitleHeader>
             <SessionHeaderLayout
               title={title.editing ? title.draft : childTitle()}
