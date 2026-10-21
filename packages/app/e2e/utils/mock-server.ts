@@ -3,6 +3,10 @@ import type { Page, Route } from "@playwright/test"
 const emptyList = new Set(["/skill", "/command", "/lsp", "/formatter", "/vcs/status", "/vcs/diff"])
 const emptyObject = new Set(["/global/config", "/config", "/provider/auth", "/mcp", "/experimental/resource"])
 
+// The app retires the old interface at oldInterfaceSunset in src/context/settings.tsx. Tests that cover the
+// old interface pin the browser clock before that date, otherwise they stop exercising it once it passes.
+export const legacyInterfaceAvailableTime = new Date(2026, 8, 1)
+
 export interface MockServerConfig {
   protocol?: "v1" | "v2"
   provider: unknown | (() => unknown)

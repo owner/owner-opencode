@@ -15,7 +15,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client"
 import { expect, type Page } from "@playwright/test"
 import { Schema } from "effect"
-import { mockOpenCodeServer } from "../../utils/mock-server"
+import { legacyInterfaceAvailableTime, mockOpenCodeServer } from "../../utils/mock-server"
 import { installSseTransport } from "../../utils/sse-transport"
 import { expectSessionTitle } from "../../utils/waits"
 
@@ -142,6 +142,9 @@ export async function setupTimeline(
       localStorage.setItem("app-version.v1", JSON.stringify({ version: "1.17.20" }))
     }
   }, input.settings ?? {})
+  if (input.settings?.newLayoutDesigns === false) {
+    await page.clock.setFixedTime(legacyInterfaceAvailableTime)
+  }
   if (input.locale) {
     await page.addInitScript((locale) => {
       localStorage.setItem("opencode.global.dat:language", JSON.stringify({ locale }))
