@@ -64,7 +64,8 @@ jobs:
             turbo-${{ runner.os }}-
 
       - name: Run unit tests
-        timeout-minutes: 20
+        # An uncached Windows run of the full suite takes about 20 minutes, mostly in packages/opencode.
+        timeout-minutes: 30
         run: GITHUB_ACTIONS=false bun turbo test
         env:
           OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}

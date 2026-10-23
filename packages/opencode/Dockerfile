@@ -4,6 +4,8 @@ FROM alpine AS base
 # On ephemeral containers, the cache is not useful
 ARG BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=${BUN_RUNTIME_TRANSPILER_CACHE_PATH}
+# The alpine image ships only ca-certificates-bundle, and its copy can lag the Alpine repository.
+RUN apk upgrade --no-cache ca-certificates-bundle
 RUN apk add libgcc libstdc++ ripgrep
 
 FROM base AS build-amd64

@@ -1,5 +1,8 @@
 FROM oven/bun:1.3.14-alpine AS base
 
+# The Bun Alpine image installs only ca-certificates-bundle, so upgrading ca-certificates would be a no-op.
+RUN apk upgrade --no-cache ca-certificates-bundle
+
 WORKDIR /app
 
 ENV NODE_ENV=production

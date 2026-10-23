@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 import { base64Encode } from "@opencode-ai/core/util/encode"
-import { mockOpenCodeServer } from "../utils/mock-server"
+import { legacyInterfaceAvailableTime, mockOpenCodeServer } from "../utils/mock-server"
 
 const draftID = "draft_legacy_new_session"
 const directory = "C:/OpenCode/LegacyNewSession"
@@ -21,6 +21,7 @@ test("redirects a draft to the legacy new-session route", async ({ page }) => {
     sessions: [],
     pageMessages: () => ({ items: [] }),
   })
+  await page.clock.setFixedTime(legacyInterfaceAvailableTime)
   await page.addInitScript(
     ({ directory, draftID, server }) => {
       localStorage.setItem("settings.v3", JSON.stringify({ general: { newLayoutDesigns: false } }))
