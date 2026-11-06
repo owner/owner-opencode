@@ -1,5 +1,15 @@
 import { createSimpleContext } from "@opencode/ui/context"
-import { Accessor, batch, createEffect, createMemo, createResource, createRoot, getOwner, untrack } from "solid-js"
+import {
+  Accessor,
+  batch,
+  createEffect,
+  createMemo,
+  createResource,
+  createRoot,
+  getOwner,
+  onCleanup,
+  untrack,
+} from "solid-js"
 import { createServerProjects, ServerConnection, useServers } from "./registry"
 import { pathKey } from "@/workspaces/path-key"
 import { useServerHealth } from "@/runtime/server/health"
@@ -108,6 +118,11 @@ export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext(
         if (serverHealth.status[key]?.unauthorized || !server.list.find((conn) => ServerConnection.key(conn) === key))
           disposeServerCtx(key)
       }
+    })
+
+    // Detached roots otherwise keep reconnecting their event streams after the host unmounts the app.
+    onCleanup(() => {
+      for (const key of serverCtxDisposers.keys()) disposeServerCtx(key)
     })
 
     return {

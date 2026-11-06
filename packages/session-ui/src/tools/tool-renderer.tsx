@@ -66,6 +66,8 @@ import { AssistantReasoningContent, writeClipboard } from "../message/message-co
 import { stripAnsi } from "./ansi"
 import { followShellOutput } from "./shell-output"
 import { LinkedText } from "../components/linked-text"
+import { disposeStreamingCode, highlightStreamingCode } from "../components/markdown-worker"
+import type { MarkdownToken } from "../components/markdown-worker-protocol"
 
 function ShellSubmessage(props: { text: string; animate?: boolean }) {
   let widthRef: HTMLSpanElement | undefined
@@ -1849,7 +1851,7 @@ ToolRegistry.register({
   },
 })
 
-function ConsoleOutput(props: { command?: string; output: string }) {
+function ConsoleOutput(props: { command?: string; output: string; language?: string }) {
   const i18n = useI18n()
 
   return (
@@ -1866,7 +1868,11 @@ function ConsoleOutput(props: { command?: string; output: string }) {
             <div data-slot="bash-command">
               <ConsoleCopy text={command()} label={i18n.t("ui.message.copy")} />
               <pre data-slot="bash-pre">
-                <code>{command()}</code>
+                <code>
+                  <Show when={props.language} fallback={command()}>
+                    {(language) => <HighlightedCode text={command()} language={language()} />}
+                  </Show>
+                </code>
               </pre>
             </div>
           )}
@@ -1886,6 +1892,38 @@ function ConsoleOutput(props: { command?: string; output: string }) {
       </div>
     </div>
   )
+}
+
+function HighlightedCode(props: { text: string; language: string }) {
+  const key = `tool-code:${createUniqueId()}`
+  const [tokens, setTokens] = createSignal<MarkdownToken[]>([])
+
+  createEffect(() => {
+    const text = props.text
+    const language = props.language
+    let active = true
+    setTokens(text ? [[text, ""]] : [])
+
+    if (!text) return
+    void Promise.resolve()
+      .then(() => {
+        if (active) return highlightStreamingCode(key, text, language, true)
+      })
+      .then((result) => {
+        if (!active || !result) return
+        setTokens([...result.stable, ...result.unstable])
+      })
+      .catch(() => {
+        // Keep the raw code visible if the shared highlighting worker is unavailable.
+      })
+    onCleanup(() => {
+      active = false
+    })
+  })
+
+  onCleanup(() => disposeStreamingCode(key))
+
+  return <For each={tokens()}>{(token) => <span style={token[1]}>{token[0]}</span>}</For>
 }
 
 // The button sits beside its section's <pre>, not inside it, so selecting and copying text never picks it up.
@@ -2003,6 +2041,50 @@ ToolRegistry.register({
       </BasicTool>
     )
   },
+})
+
+// Gateway code-mode tools (Charon, Executor) take JavaScript but lack native execute's call metadata.
+function IntegrationExecuteTool(props: ToolProps) {
+  const i18n = useI18n()
+  const pending = () => props.status === "streaming" || props.status === "running"
+  const code = createMemo(() => toolInput(props.input).code ?? "")
+  const output = createMemo(() => stripAnsi(props.output ?? "").replace(/\r\n?/g, "\n"))
+  const sawPending = pending()
+
+  return (
+    <BasicTool
+      {...props}
+      icon="mcp"
+      rail={false}
+      hasContent={Boolean(code() || output())}
+      compact
+      allowOpenWhilePending
+      trigger={(open) => (
+        <div data-slot="basic-tool-tool-info-structured">
+          <div data-slot="basic-tool-tool-info-main">
+            <span data-slot="basic-tool-tool-title">
+              <TextShimmer text={i18n.t("ui.basicTool.called", { tool: props.tool })} active={pending()} />
+            </span>
+            <Show when={!open() && code()}>
+              <ShellSubmessage text={code().split("\n", 1)[0]} animate={sawPending} />
+            </Show>
+          </div>
+        </div>
+      )}
+    >
+      <ConsoleOutput command={code()} output={output()} language="javascript" />
+    </BasicTool>
+  )
+}
+
+ToolRegistry.register({
+  name: "charon_execute",
+  render: IntegrationExecuteTool,
+})
+
+ToolRegistry.register({
+  name: "executor_execute",
+  render: IntegrationExecuteTool,
 })
 
 const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))

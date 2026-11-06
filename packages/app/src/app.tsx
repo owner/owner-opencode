@@ -21,6 +21,7 @@ import { TabsProvider } from "@/shell/tabs/tabs"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
 import { PluginRoot } from "@/runtime/plugin/root"
+import { EmbeddedProvider } from "@/runtime/embed"
 
 export { preloadRoute }
 
@@ -93,26 +94,30 @@ export function AppInterface(props: {
   canonicalLocalServer?: ServerConnection.Key
   servers?: Array<ServerConnection.Any>
   router?: Component<BaseRouterProps>
+  /** Hide application navigation when the host owns the surrounding chrome. */
+  embedded?: boolean
 }) {
   // The visual layout lives in the router root so it remains mounted across
   // route changes. Draft and session routes override only their server-bound data
   // providers beneath it.
   const Root = (rootProps: ParentProps) => (
-    <TabsProvider>
-      <GlobalProvider>
-        <ProjectIconsProvider>
-          <BodyTypography />
-          <CommandProvider>
-            <DesktopCommands />
-            <VoiceProvider>
-              {props.children}
-              {rootProps.children}
-              <VoiceOverlay />
-            </VoiceProvider>
-          </CommandProvider>
-        </ProjectIconsProvider>
-      </GlobalProvider>
-    </TabsProvider>
+    <EmbeddedProvider embedded={props.embedded}>
+      <TabsProvider>
+        <GlobalProvider>
+          <ProjectIconsProvider>
+            <BodyTypography />
+            <CommandProvider>
+              <DesktopCommands />
+              <VoiceProvider>
+                {props.children}
+                {rootProps.children}
+                <VoiceOverlay />
+              </VoiceProvider>
+            </CommandProvider>
+          </ProjectIconsProvider>
+        </GlobalProvider>
+      </TabsProvider>
+    </EmbeddedProvider>
   )
 
   return (
